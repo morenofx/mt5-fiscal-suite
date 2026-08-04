@@ -5,8 +5,8 @@ uniti in un'unica pagina iniziale. Tutto gira nel browser: nessun server, nessun
 
 | App | A cosa serve |
 |---|---|
-| **MT5 Fiscal Analyzer** (`analyzer.html`) | Legge i report `.xlsx` di MetaTrader 5 e prepara Quadro RT (plusvalenze, imposta 26%) e Quadro RW (giacenze conti esteri, IVAFE) |
-| **MQL5 Proventi Calculator** (`calculator.html`) | Interpreta la tabella Payments di MQL5 e prepara il riepilogo dei compensi da lavoro autonomo occasionale |
+| **MT5 Fiscal Analyzer** (`analyzer.html`) | Legge i report `.xlsx` di MetaTrader 5 e prepara Quadro RT (plusvalenze, imposta 26%) e Quadro RW (giacenze conti esteri, IVAFE) per il commercialista |
+| **MQL5 Proventi Calculator** (`calculator.html`) | Interpreta la tabella Payments di MQL5 e calcola l'imponibile in euro da registrare nei corrispettivi (partita IVA), vendita per vendita |
 
 ## Il motore cambi (`fx.js`)
 
@@ -39,6 +39,16 @@ modo in cui viene costruito quello ufficiale.
 
 Una richiesta per anno scarica l'intera serie storica; i cambi restano in cache locale
 (non cambiano mai), quindi dopo la prima apertura le app funzionano anche offline.
+
+## Criterio di conversione, per app
+
+- **Analyzer:** ogni trade al cambio BCE del giorno di chiusura; saldi iniziali e finali al cambio
+  della rispettiva data di riferimento. Per l'anno ancora in corso il riferimento di fine periodo
+  è la data odierna (il 31 dicembre futuro non ha cambio) e i valori sono dichiarati provvisori.
+- **Calculator:** ogni vendita al cambio BCE del giorno dell'operazione, criterio che coincide con
+  l'art. 13, c. 4, DPR 633/72 per i corrispettivi in valuta estera (cambio del giorno di
+  effettuazione o, in mancanza, del giorno antecedente più prossimo). L'importo da registrare è il
+  **lordo** pagato dal cliente; la commissione MQL5 del 20% è un costo separato.
 
 ## Aggiornare il motore cambi
 

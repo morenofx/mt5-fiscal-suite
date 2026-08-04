@@ -70,16 +70,18 @@ button.big { font-size: 16px; padding: 14px 28px; }
 
 <a class="home-link" href="index.html">← Torna alla suite</a>
 <h1>🎯 MQL5 Proventi Calculator</h1>
+<p style="color:#94a3b8;font-size:14px;margin:-6px 0 18px 0;">Ricava l'imponibile esatto in euro da registrare nei corrispettivi, vendita per vendita.</p>
 
 <div class="info">
 <strong>Come funziona:</strong><br>
 1. Vai su MQL5 → Payments → seleziona "Payment for product" → seleziona e copia tutta la tabella<br>
 2. Torna qui, incolla il testo nell'area "Prodotti" e clicca "Analizza e inserisci"<br>
-3. Il sistema calcola automaticamente il <b>lordo reale</b> dal netto (netto ÷ 0.80)<br>
+3. Il sistema ricostruisce il <b>lordo pagato dal cliente</b> dal netto accreditato (netto ÷ 0.80)<br>
 4. Fai lo stesso con i Segnali (Signal subscription)<br>
-5. Vai su "Riepilogo" per vedere totali e generare il PDF<br>
+5. Vai su "Riepilogo": trovi l'imponibile in euro da registrare e il PDF con il dettaglio per vendita<br>
 <br>
-<strong>💡 Nota:</strong> Il prezzo lordo è calcolato automaticamente dal netto effettivo di ogni singola vendita, quindi rispecchia il prezzo vero al momento della vendita (anche se hai cambiato prezzo nel tempo).
+<strong>💡 Il numero che ti serve:</strong> l'importo da registrare nei corrispettivi è il <b>lordo in euro</b>, cioè quanto ha pagato il cliente, convertito al cambio del giorno dell'operazione. La commissione MQL5 del 20% non riduce il corrispettivo: è un costo a parte.<br>
+<strong>Nota sul lordo:</strong> viene ricostruito dal netto effettivo di ogni singola vendita, quindi rispecchia il prezzo vero di quel momento anche se nel frattempo hai cambiato listino.
 </div>
 
 <div class="panel">
@@ -91,12 +93,12 @@ button.big { font-size: 16px; padding: 14px 28px; }
         <input type="text" id="rep_nome" placeholder="Nome Cognome" oninput="saveState()">
     </div>
     <div class="field">
-        <label>Anno d'imposta</label>
+        <label>Anno di riferimento</label>
         <input type="number" id="rep_anno" step="1" min="2000" max="2099" oninput="saveState(); refresh()">
     </div>
     <div class="field" style="grid-column:1/-1;">
         <label>Nota per il commercialista (facoltativa)</label>
-        <textarea id="rep_nota" placeholder="Es. situazione partita IVA, natura occasionale dell'attività..." oninput="saveState()"></textarea>
+        <textarea id="rep_nota" placeholder="Es. regime IVA applicato, trattamento della commissione MetaQuotes, riferimenti registrazione..." oninput="saveState()"></textarea>
     </div>
 </div>
 </div>
@@ -887,16 +889,20 @@ function renderSummary() {
             <div class="tot-row big"><span>TOTALE COMPLESSIVO:</span><span>Lordo $${t.totTutto.toFixed(2)} | Netto $${t.totNettoTutto.toFixed(2)}</span></div>
             <div class="tot-row"><span>Commissione MQL5 (20%):</span><span>$${(t.totTutto * 0.20).toFixed(2)}</span></div>
         </div>
-        <div class="totali" style="background: linear-gradient(135deg, #b45309, #92400e);">
-            <h3>💱 CONVERSIONE IN EURO</h3>
-            <div style="background:rgba(0,0,0,0.25);padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:12px;">
-                Metodo: <strong>${modeLabel()}</strong>${t.cambioMedio ? ` — cambio medio ponderato applicato: <strong>${t.cambioMedio.toFixed(4)}</strong>` : ''}
+        <div class="totali" style="background: linear-gradient(135deg, #065f46, #047857); border: 2px solid #34d399;">
+            <h3 style="color:#a7f3d0;">🧾 DA REGISTRARE NEI CORRISPETTIVI — ${anno}</h3>
+            <div class="tot-row big" style="font-size:1.5em;color:#fff;"><span>Imponibile (lordo cliente):</span><span>€ ${t.totEur_lordo.toFixed(2)}</span></div>
+            <div style="font-size:12px;color:#d1fae5;margin-top:8px;line-height:1.5;">
+                È quanto hanno pagato i clienti, convertito al ${modeLabel()}${t.cambioMedio ? ` (cambio medio ponderato ${t.cambioMedio.toFixed(4)})` : ''}.<br>
+                La commissione MQL5 di € ${(t.totEur_lordo - t.totEur_netto).toFixed(2)} <strong>non</strong> va sottratta qui: è un costo da trattare a parte.
             </div>
-            <div class="tot-row"><span>✅ Lordo disponibili:</span><span>€ ${t.totEurD_lordo.toFixed(2)}</span></div>
-            <div class="tot-row"><span>✅ Netto disponibili:</span><span>€ ${t.totEurD_netto.toFixed(2)}</span></div>
-            <div class="tot-row"><span>🔒 Lordo bloccati:</span><span>€ ${t.totEurB_lordo.toFixed(2)}</span></div>
-            <div class="tot-row big"><span>TOTALE LORDO EUR:</span><span>€ ${t.totEur_lordo.toFixed(2)}</span></div>
-            <div class="tot-row big"><span>TOTALE NETTO EUR:</span><span>€ ${t.totEur_netto.toFixed(2)}</span></div>
+        </div>
+        <div class="totali" style="background: linear-gradient(135deg, #b45309, #92400e);">
+            <h3>💱 Dettaglio conversione in euro</h3>
+            <div class="tot-row"><span>Lordo vendite disponibili:</span><span>€ ${t.totEurD_lordo.toFixed(2)}</span></div>
+            <div class="tot-row"><span>Lordo vendite con fondi bloccati:</span><span>€ ${t.totEurB_lordo.toFixed(2)}</span></div>
+            <div class="tot-row"><span>Commissione MQL5 20% (costo):</span><span>€ ${(t.totEur_lordo - t.totEur_netto).toFixed(2)}</span></div>
+            <div class="tot-row big"><span>Netto accreditato da MetaQuotes:</span><span>€ ${t.totEur_netto.toFixed(2)}</span></div>
         </div>
     `;
 }
@@ -952,7 +958,7 @@ function generatePDF() {
     const w = window.open('', '_blank');
     if (!w) { alert('Il browser ha bloccato la finestra. Consenti i popup per questo sito e riprova.'); return; }
     w.document.write(`
-    <html><head><meta charset="UTF-8"><title>Riepilogo Compensi MQL5 ${anno}</title>
+    <html><head><meta charset="UTF-8"><title>Corrispettivi vendite MQL5 ${anno}</title>
     <style>
     body { font-family: Helvetica, Arial; padding: 30px; color: #1a1a2e; font-size: 11px; }
     h1 { color: #1a1a2e; border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 4px; }
@@ -977,21 +983,29 @@ function generatePDF() {
     @media print { body { padding: 15px; } .key-card, .caf-box, .warn-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style></head><body>
 
-    <h1>Riepilogo Compensi MQL5 — Anno ${anno}</h1>
+    <h1>Corrispettivi vendite MQL5 — Anno ${anno}</h1>
     <p style="margin-top: 0; color: #555;">${nome ? '<strong>' + nome + '</strong> &nbsp;·&nbsp; ' : ''}Documento generato il ${today}</p>
 
     ${avvisoMancanti}
 
+    <div class="key-box" style="grid-template-columns:1fr;margin-top:18px;">
+        <div class="key-card lordo" style="background:linear-gradient(135deg,#15803d,#16a34a);">
+            <div class="label">Imponibile da registrare nei corrispettivi</div>
+            <div class="amount" style="font-size:30px;">€ ${lordoEur.toFixed(2)}</div>
+            <div class="sub">lordo pagato dai clienti · ${sortedP.length + sortedS.length} operazioni · anno ${anno}</div>
+        </div>
+    </div>
+
     <div class="caf-box">
-        <h3>📋 Inquadramento fiscale</h3>
-        <p><strong>Tipologia reddito:</strong> Prestazione di lavoro autonomo occasionale (art. 67, c. 1, lett. l, TUIR)</p>
-        <p><strong>Quadro 730:</strong> Quadro D — rigo D5 (altri redditi di lavoro autonomo non esercitato abitualmente)</p>
-        <p><strong>Soggetto erogante:</strong> MetaQuotes Ltd (piattaforma MQL5.com — Cipro)</p>
-        <p><strong>Ritenuta d'acconto:</strong> non applicata (committente non residente, no sostituto d'imposta italiano)</p>
+        <h3>📋 Come è stato ottenuto questo importo</h3>
+        <p><strong>Corrispettivo:</strong> il prezzo lordo pagato dal cliente per ciascuna vendita, ricostruito dall'accredito netto MQL5 (netto ÷ 0,80).</p>
+        <p><strong>Commissione MetaQuotes 20%:</strong> € ${commEur.toFixed(2)} — non è portata in diminuzione del corrispettivo, va trattata separatamente come costo del servizio di intermediazione (MetaQuotes Ltd, Cipro).</p>
+        <p><strong>Conversione valutaria:</strong> ${modeLabel()}. L'art. 13, c. 4, DPR 633/72 prevede per i corrispettivi in valuta estera il cambio del giorno di effettuazione dell'operazione o, in mancanza, del giorno antecedente più prossimo: è esattamente il criterio applicato qui, usando i tassi di riferimento BCE (gli stessi pubblicati da Banca d'Italia).</p>
+        <p><strong>Netto effettivamente accreditato:</strong> € ${nettoEur.toFixed(2)}</p>
         ${nota ? `<p style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed #ca8a04;"><em>${nota.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</em></p>` : ''}
     </div>
 
-    <div class="box"><strong>Nota di lettura:</strong> il <b>LORDO</b> è il prezzo di vendita al momento della transazione. Il <b>NETTO</b> è l'importo accreditato all'autore dopo la commissione del 20% trattenuta da MQL5. Le righe evidenziate indicano operazioni con fondi non ancora disponibili (lock).</div>
+    <div class="box"><strong>Nota di lettura:</strong> il <b>LORDO</b> è il prezzo pagato dal cliente al momento della transazione, cioè il corrispettivo. Il <b>NETTO</b> è quanto MQL5 accredita dopo la commissione del 20%. Le righe evidenziate indicano operazioni i cui fondi non erano ancora sbloccati alla data del pagamento: il corrispettivo resta comunque quello della data indicata.</div>
 
     <h2>📦 Vendite prodotti (${sortedP.length})</h2>
     <table><tr><th>Data</th><th>Prodotto</th><th>Lordo USD</th><th>Netto USD</th><th>Cambio (1 USD = X EUR)</th><th>Lordo EUR</th><th>Netto EUR</th><th>Stato</th></tr>
@@ -1028,30 +1042,27 @@ function generatePDF() {
     <tr><td>TOTALE NETTO (effettivamente accreditato)</td><td>$${t.totNettoTutto.toFixed(2)}</td><td><strong>€ ${nettoEur.toFixed(2)}</strong></td></tr>
     </table>
 
-    <h2>🎯 Importi per la dichiarazione</h2>
-    <div class="key-box">
-        <div class="key-card lordo">
-            <div class="label">Compenso Lordo</div>
+    <h2>🎯 Riepilogo dei tre importi</h2>
+    <div class="key-box" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="key-card lordo" style="background:linear-gradient(135deg,#15803d,#16a34a);">
+            <div class="label">Corrispettivi</div>
             <div class="amount">€ ${lordoEur.toFixed(2)}</div>
-            <div class="sub">prezzo di vendita pattuito</div>
+            <div class="sub">l'importo da registrare</div>
         </div>
-        <div class="key-card netto">
-            <div class="label">Imponibile Netto</div>
+        <div class="key-card" style="background:linear-gradient(135deg,#b45309,#d97706);color:#fff;">
+            <div class="label">Commissione MQL5</div>
+            <div class="amount">€ ${commEur.toFixed(2)}</div>
+            <div class="sub">costo di intermediazione (20%)</div>
+        </div>
+        <div class="key-card netto" style="background:linear-gradient(135deg,#1e40af,#2563eb);">
+            <div class="label">Netto accreditato</div>
             <div class="amount">€ ${nettoEur.toFixed(2)}</div>
-            <div class="sub">dopo commissione piattaforma 20%</div>
+            <div class="sub">quanto è arrivato sul conto MQL5</div>
         </div>
-    </div>
-
-    <div class="caf-box" style="background: #eff6ff; border-color: #2563eb;">
-        <h3 style="color: #1e40af;">💡 Indicazione per il CAF</h3>
-        <p>La <strong>commissione del 20%</strong> trattenuta da MQL5 (€ ${commEur.toFixed(2)}) costituisce <strong>spesa inerente</strong> alla produzione del reddito occasionale, deducibile ai sensi dell'art. 71, c. 2, TUIR.</p>
-        <p style="margin-top: 10px;">A seconda della prassi del CAF può essere indicato:</p>
-        <p>&nbsp;&nbsp;<strong>Opzione A:</strong> compenso lordo € ${lordoEur.toFixed(2)} con costo deducibile € ${commEur.toFixed(2)} → imponibile € ${nettoEur.toFixed(2)}</p>
-        <p>&nbsp;&nbsp;<strong>Opzione B:</strong> direttamente l'importo netto € ${nettoEur.toFixed(2)} come compenso</p>
     </div>
 
     <p style="margin-top: 30px; font-size: 9px; color: #888; border-top: 1px solid #ddd; padding-top: 10px;">
-    Documento riepilogativo generato da MQL5 Proventi Calculator. I dati di dettaglio delle singole transazioni provengono dall'area "Payments" del profilo personale MQL5.com. Documento indicativo, da validare con il proprio consulente fiscale.${avvisoAltriAnni}
+    Documento riepilogativo generato da MQL5 Proventi Calculator. I dati di dettaglio delle singole transazioni provengono dall'area "Payments" del profilo personale MQL5.com. Ogni riga riporta il cambio applicato e la sua fonte, così che ogni importo in euro sia verificabile. Documento di supporto: il trattamento IVA delle operazioni va concordato con il proprio consulente fiscale.${avvisoAltriAnni}
     </p>
 
     <scr`+`ipt>setTimeout(()=>window.print(),500);</scr`+`ipt>
