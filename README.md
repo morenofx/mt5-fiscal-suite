@@ -40,6 +40,12 @@ modo in cui viene costruito quello ufficiale.
 Una richiesta per anno scarica l'intera serie storica; i cambi restano in cache locale
 (non cambiano mai), quindi dopo la prima apertura le app funzionano anche offline.
 
+## Aggiornare il motore cambi
+
+Le tre pagine caricano `fx.js?v=DATA`. Se modifichi `fx.js`, cambia quel parametro in
+`index.html`, `analyzer.html` e `calculator.html`: senza, il browser può continuare a usare
+la versione vecchia rimasta in cache.
+
 ## Uso
 
 Apri `index.html` e scegli l'app. In locale serve un server statico (le app caricano `fx.js`):
