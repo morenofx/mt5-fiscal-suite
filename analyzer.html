@@ -774,6 +774,7 @@
             const balanceTimeline = [];
             let totalDeposits = 0, totalWithdrawals = 0, totalBonusCredits = 0;
             let totalInternalIn = 0, totalInternalOut = 0, totalPnlAdj = 0;
+            let totalPromo = 0, totalReversals = 0;
             let firstDealEntry = null, lastDealEntry = null;
             
             // Classifica un movimento balance dalle parole nel commento
@@ -783,31 +784,51 @@
             // - 'swap', 'pnl', 'rollover', 'adjustment', 'correction' → aggiustamento P&L (non è movimento di cassa)
             function classifyBalanceComment(commentLower, amount) {
                 const c = commentLower;
-                
-                // 1. Aggiustamenti P&L (non sono movimenti veri)
-                if (/\b(swap|pnl|rollover|adjust|correct|interest)\b/.test(c)) {
-                    return 'pnl_adj';
+                let cat;
+
+                // 1. Storni: annullano un movimento precedente, non sono denaro nuovo.
+                // Vanno riconosciuti PRIMA dei prelievi, altrimenti "Withdrawal Reversal"
+                // finisce fra i prelievi e li gonfia invece di annullarli.
+                if (/\b(revers|reversal|storno|cancell?ed|rejected|declined|failed)\b/.test(c)) {
+                    cat = 'reversal';
                 }
-                
-                // 2. Trasferimenti interni (anche se positivi/negativi non sono cassa)
-                // Pattern: "Autotrf", "Transfer In/Out", "Transfer from/to", "TFR"
-                if (/\b(autotrf|transfer\s+(in|out|from|to)|tfr|internal)\b/.test(c)) {
-                    return amount >= 0 ? 'internal_in' : 'internal_out';
+                // 2. Aggiustamenti P&L (non sono movimenti di cassa)
+                else if (/\b(swap|pnl|rollover|adjust|correct|interest)\b/.test(c)) {
+                    cat = 'pnl_adj';
                 }
-                
-                // 3. Depositi reali (verso il conto dalla banca/carta)
-                // Circuiti di pagamento: sono depositi reali dall'esterno, non giroconti
-                if (/\b(cc\s+deposit|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2}|paypal|skrill|neteller|sepa|bonifico|bank\s+in|visa|mastercard|maestro|card\s+payment)\b/.test(c)) {
-                    return 'real_deposit';
+                // 3. Promozioni e rimborsi del broker (es. rimborso del canone VPS):
+                // sono denaro reale sul conto, ma non un deposito di tasca propria.
+                else if (/\b(promotion|promo|cashback|rebate|reward|loyalty)\b/.test(c)) {
+                    cat = 'broker_promo';
                 }
-                
-                // 4. Prelievi reali (dal conto verso banca)
-                if (/\b(wdl|withdrawal|wire\s+out|pay\s+out|withdraw|payout|refund\s+to)\b/.test(c)) {
-                    return 'real_withdrawal';
+                // 4. Trasferimenti interni fra conti dello stesso titolare
+                else if (/\b(autotrf|transfer\s+(in|out|from|to)|tfr|internal)\b/.test(c)) {
+                    cat = amount >= 0 ? 'internal_in' : 'internal_out';
                 }
-                
-                // 5. Default basato sul segno (fallback)
-                return amount >= 0 ? 'real_deposit' : 'real_withdrawal';
+                // 5. Depositi reali (dalla banca, dalla carta o da un circuito di pagamento)
+                else if (/\b(cc\s+deposit|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2}|paypal|skrill|neteller|cardpay|unlimit|bridger|sepa|bonifico|bank\s+in|visa|mastercard|maestro|card\s+payment)\b/.test(c)) {
+                    cat = 'real_deposit';
+                }
+                // 6. Prelievi reali (dal conto verso la banca)
+                else if (/\b(wdl|withdrawal|wire\s+out|pay\s+out|withdraw|payout)\b/.test(c)) {
+                    cat = 'real_withdrawal';
+                }
+                // 7. Nessuna parola chiave riconosciuta: si deduce dal segno.
+                // Il suffisso _guess viene tolto dal chiamante, che lo usa per
+                // segnalare il movimento nella verifica dati. Cosi' esiste una
+                // sola lista di parole chiave, qui dentro.
+                else {
+                    return amount >= 0 ? 'real_deposit_guess' : 'real_withdrawal_guess';
+                }
+
+                // Coerenza col segno: la parola dice una direzione, l'importo un'altra.
+                // Un "prelievo" con importo positivo e' uno storno, non un prelievo.
+                if (cat === 'real_withdrawal' && amount > 0) cat = 'reversal';
+                else if (cat === 'real_deposit' && amount < 0) cat = 'reversal';
+                else if (cat === 'internal_in' && amount < 0) cat = 'internal_out';
+                else if (cat === 'internal_out' && amount > 0) cat = 'internal_in';
+
+                return cat;
             }
             
             if (dealsStart !== -1) {
@@ -845,10 +866,13 @@
                     category = 'bonus';
                 } else if (isBalanceOp) {
                     category = classifyBalanceComment(comment, amount);
-                    // Nessuna parola chiave riconosciuta: la classificazione e' solo
-                    // dedotta dal segno dell'importo. Va segnalata, perche' distinguere
-                    // un deposito reale da un giroconto interno cambia il quadro RW.
-                    categoryGuessed = !/\b(swap|pnl|rollover|adjust|correct|interest|autotrf|transfer\s+(in|out|from|to)|tfr|internal|cc\s+deposit|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2}|paypal|skrill|neteller|sepa|bonifico|bank\s+in|visa|mastercard|maestro|card\s+payment|wdl|withdrawal|wire\s+out|pay\s+out|withdraw|payout|refund\s+to)\b/.test(comment);
+                    // Il classificatore segnala da solo quando non ha riconosciuto
+                    // nessuna parola chiave e ha dedotto la direzione dal segno:
+                    // distinguere un deposito vero da un giroconto cambia il quadro RW.
+                    if (category.endsWith('_guess')) {
+                        category = category.replace('_guess', '');
+                        categoryGuessed = true;
+                    }
                 }
                 
                 // Aggiorna i contatori in base alla categoria
@@ -859,13 +883,24 @@
                     case 'internal_in':      totalInternalIn += amount; break;
                     case 'internal_out':     totalInternalOut += Math.abs(amount); break;
                     case 'pnl_adj':          totalPnlAdj += amount; break;
+                    case 'broker_promo':     totalPromo += amount; break;
+                    // Lo storno si sottrae dal movimento che annulla
+                    case 'reversal':
+                        totalReversals += amount;
+                        if (amount >= 0) totalWithdrawals -= amount;
+                        else totalDeposits -= Math.abs(amount);
+                        break;
                 }
                 
                 entry.category = category;
                 entry.categoryGuessed = categoryGuessed;
                 entry.isCredit = isCredit;
-                entry.isDeposit = (category === 'real_deposit');
-                entry.isWithdrawal = (category === 'real_withdrawal');
+                // Uno storno viene aggregato insieme al movimento che annulla, con
+                // segno opposto: cosi' i totali di periodo si compensano da soli.
+                entry.isDeposit = (category === 'real_deposit') || (category === 'reversal' && amount < 0);
+                entry.isWithdrawal = (category === 'real_withdrawal') || (category === 'reversal' && amount > 0);
+                entry.isPromo = (category === 'broker_promo');
+                entry.isReversal = (category === 'reversal');
                 entry.isInternalIn = (category === 'internal_in');
                 entry.isInternalOut = (category === 'internal_out');
                 entry.isSwapAdj = (category === 'pnl_adj');
@@ -881,7 +916,7 @@
             if (balanceTimeline.length > 0) {
               // Primo movimento "monetario" reale (deposito o trasferimento interno)
               const firstMonetary = balanceTimeline.find(e =>
-                e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut
+                e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut || e.isPromo
               );
               if (firstMonetary) {
                 // Valore iniziale = saldo PRIMA di questo primo movimento (escluso bonus)
@@ -922,7 +957,7 @@
               totalCommission, totalSwap, totalProfitRaw,
               wins, losses, valoreIniziale, valoreFinale,
               balanceTimeline, totalDeposits, totalWithdrawals, totalBonusCredits,
-              totalInternalIn, totalInternalOut, totalPnlAdj,
+              totalInternalIn, totalInternalOut, totalPnlAdj, totalPromo, totalReversals,
               minDate: trades.length > 0 ? trades[0].date : null,
               maxDate: trades.length > 0 ? trades[trades.length-1].date : null,
               fileName: file.name
@@ -1024,11 +1059,13 @@
             a.yearWithdrawalsEUR = a.yearWithdrawals;
             a.yearInternalInEUR = a.yearInternalIn;
             a.yearInternalOutEUR = a.yearInternalOut;
+            a.yearPromoEUR = a.yearPromo;
           } else {
             a.yearDepositsEUR = (a.depositEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year), 0);
-            a.yearWithdrawalsEUR = (a.withdrawalEvents || []).reduce((s,e) => s + usdToEur(Math.abs(e.amount), e.date, year), 0);
+            a.yearWithdrawalsEUR = (a.withdrawalEvents || []).reduce((s,e) => s + usdToEur(-e.amount, e.date, year), 0);
             a.yearInternalInEUR = (a.internalInEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year), 0);
-            a.yearInternalOutEUR = (a.internalOutEvents || []).reduce((s,e) => s + usdToEur(Math.abs(e.amount), e.date, year), 0);
+            a.yearInternalOutEUR = (a.internalOutEvents || []).reduce((s,e) => s + usdToEur(-e.amount, e.date, year), 0);
+            a.yearPromoEUR = (a.promoEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year), 0);
           }
           
           // IVAFE: 0,2% sul valore medio annuo proporzionato ai giorni
@@ -1066,7 +1103,7 @@
         // Il primo movimento monetario (deposito o trasferimento interno) farà partire la giacenza
         const firstMonetary = timeline.find(e =>
           e.date >= ys && e.date <= ye &&
-          (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut)
+          (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut || e.isPromo)
         );
         if (firstMonetary) {
           // Il valore iniziale è il saldo PRIMA di questo primo movimento
@@ -1090,7 +1127,7 @@
       //   - Altrimenti → giorni terminano al 31 dicembre
       const firstMonetaryTY = timeline.find(e =>
         e.date >= ys && e.date <= ye &&
-        (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut)
+        (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut || e.isPromo)
       );
       const fdTY = firstMonetaryTY || timeline.find(e => e.date >= ys && e.date <= ye && e.isDeposit);
       const feTY = timeline.find(e => e.date >= ys && e.date <= ye);
@@ -1135,7 +1172,7 @@
         valoreInizialeDate = ys; // 1 gennaio
       } else {
         const firstMonetary = timeline.find(e => e.date >= ys && e.date <= ye &&
-          (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut));
+          (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut || e.isPromo));
         if (firstMonetary) valoreInizialeDate = firstMonetary.date;
       }
       const lastTYevent = [...timeline].reverse().find(e => e.date >= ys && e.date <= ye);
@@ -1157,9 +1194,11 @@
         valoreInizialeDate, valoreFinaleDate, annoInCorso,
         ivafe: 0,
         yearDeposits: timeline.filter(e => e.date >= ys && e.date <= ye && e.isDeposit).reduce((s,e) => s + e.amount, 0),
-        yearWithdrawals: timeline.filter(e => e.date >= ys && e.date <= ye && e.isWithdrawal).reduce((s,e) => s + Math.abs(e.amount), 0),
+        yearWithdrawals: timeline.filter(e => e.date >= ys && e.date <= ye && e.isWithdrawal).reduce((s,e) => s - e.amount, 0),
         yearInternalIn: timeline.filter(e => e.date >= ys && e.date <= ye && e.isInternalIn).reduce((s,e) => s + e.amount, 0),
-        yearInternalOut: timeline.filter(e => e.date >= ys && e.date <= ye && e.isInternalOut).reduce((s,e) => s + Math.abs(e.amount), 0),
+        yearInternalOut: timeline.filter(e => e.date >= ys && e.date <= ye && e.isInternalOut).reduce((s,e) => s - e.amount, 0),
+        yearPromo: timeline.filter(e => e.date >= ys && e.date <= ye && e.isPromo).reduce((s,e) => s + e.amount, 0),
+        promoEvents: timeline.filter(e => e.date >= ys && e.date <= ye && e.isPromo),
         // Liste di eventi per calcoli storici
         depositEvents: timeline.filter(e => e.date >= ys && e.date <= ye && e.isDeposit),
         withdrawalEvents: timeline.filter(e => e.date >= ys && e.date <= ye && e.isWithdrawal),
@@ -1206,6 +1245,7 @@
           const wdTag = (a.yearWithdrawalsEUR || 0) > 0 ? `<div class="account-stat"><div class="label">Prelievi reali</div><div class="value text-red">€${a.yearWithdrawalsEUR.toFixed(0)}</div></div>` : '';
           const intInTag = (a.yearInternalInEUR || 0) > 0 ? `<div class="account-stat"><div class="label">Trasf. IN</div><div class="value" style="color:#60a5fa">€${a.yearInternalInEUR.toFixed(0)}</div></div>` : '';
           const intOutTag = (a.yearInternalOutEUR || 0) > 0 ? `<div class="account-stat"><div class="label">Trasf. OUT</div><div class="value" style="color:#a78bfa">€${a.yearInternalOutEUR.toFixed(0)}</div></div>` : '';
+          const promoTag = Math.abs(a.yearPromoEUR || 0) > 0.005 ? `<div class="account-stat"><div class="label">Promo broker</div><div class="value" style="color:#f472b6">€${a.yearPromoEUR.toFixed(2)}</div></div>` : '';
           
           // Badge sotto il nome broker, non accanto (evita overflow su layout stretto)
           const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
@@ -1229,7 +1269,7 @@
             <div class="account-stat"><div class="label">Val.Ini/Fin</div><div class="value" style="font-size:11px;">${a.valoreInizialeEUR.toFixed(2)} → ${a.valoreFinaleEUR.toFixed(2)}</div></div>
             <div class="account-stat"><div class="label">Giorni</div><div class="value">${a.giorni}</div></div>
             <div class="account-stat"><div class="label">IVAFE</div><div class="value text-gold">€${a.ivafe.toFixed(2)}</div></div>
-            ${depTag}${wdTag}${intInTag}${intOutTag}${bonusTag}
+            ${depTag}${wdTag}${intInTag}${intOutTag}${promoTag}${bonusTag}
           </div>`;
         });
         
@@ -1329,7 +1369,8 @@
         if (tl.length === 0) return;
         const movimenti = (a.totalDeposits || 0) - (a.totalWithdrawals || 0)
                         + (a.totalBonusCredits || 0) + (a.totalInternalIn || 0)
-                        - (a.totalInternalOut || 0) + (a.totalPnlAdj || 0);
+                        - (a.totalInternalOut || 0) + (a.totalPnlAdj || 0)
+                        + (a.totalPromo || 0);
         const saldoReport = tl[tl.length - 1].balance;
         const atteso = movimenti + (a.netProfit || 0);
         const scarto = saldoReport - atteso;
@@ -1437,11 +1478,31 @@
           rt.length ? 'Corrispettivi meno costi non danno la plusvalenza dichiarata.'
                     : 'Per ogni anno RT21 − RT22 = RT23.', rt);
 
-      // --- 9. Bonus e credit esclusi ---
-      const bonus = accounts.filter(a => Math.abs(a.totalBonusCredits || 0) > 0.005)
-                            .map(a => `conto ${a.accountNumber}: ${a.totalBonusCredits.toFixed(2)} ${a.currency} di bonus/credit esclusi dalla giacenza`);
+      // --- 9. Promozioni e rimborsi del broker ---
+      const promo = [];
+      accounts.forEach(a => (a.balanceTimeline || []).forEach(e => {
+        if (e.isPromo) promo.push(`conto ${a.accountNumber} · ${FX.toISO(e.date)} · ${e.amount.toFixed(2)} ${a.currency} · "${e.comment}"`);
+      }));
+      if (promo.length) add('Promozioni e rimborsi del broker', 'warn',
+          'Denaro accreditato dal broker, non versato da te: aumenta la giacenza del quadro RW ma non è una plusvalenza da trading, quindi non entra nel quadro RT. Se è il rimborso di un costo che avevi sostenuto, chiedi al commercialista come trattarlo.', promo);
+
+      // --- 10. Storni di movimenti ---
+      const storni = [];
+      accounts.forEach(a => (a.balanceTimeline || []).forEach(e => {
+        if (e.isReversal) storni.push(`conto ${a.accountNumber} · ${FX.toISO(e.date)} · ${e.amount.toFixed(2)} ${a.currency} · "${e.comment}" → compensato con il movimento che annulla`);
+      }));
+      if (storni.length) add('Storni di depositi o prelievi', 'ok',
+          'Movimenti annullati dal broker, riconosciuti come storni e compensati: non gonfiano i totali di depositi e prelievi.', storni);
+
+      // --- 11. Bonus e credit esclusi ---
+      const bonus = [];
+      accounts.forEach(a => (a.balanceTimeline || []).forEach(e => {
+        if (e.isCredit && Math.abs(e.amount || 0) > 0.005) {
+          bonus.push(`conto ${a.accountNumber} · ${FX.toISO(e.date)} · ${e.amount.toFixed(2)} ${a.currency} · "${e.comment || '(senza commento)'}"`);
+        }
+      }));
       if (bonus.length) add('Bonus e credit del broker', 'warn',
-          'Importi di bonus non prelevabili esclusi dal monitoraggio RW. Verifica che sia il trattamento voluto.', bonus);
+          'Registrati da MT5 come "credit" e quindi esclusi dalla giacenza RW perché di norma non prelevabili. Controlla il commento: se in realtà è denaro tuo trasferito da un altro conto, va incluso.', bonus);
 
       // --- 10. Anni ancora in corso ---
       const inCorso = anni.filter(y => annoProvvisorio(y));
@@ -1568,12 +1629,13 @@
         const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
         const blNote = isBlackListYear ? `<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;font-size:12px;color:#991b1b"><strong>⚠️ PAESE BLACK LIST (anno ${year}):</strong> sanzioni RW raddoppiate (6-30%), prescrizione 8 anni</div>` : '';
         let movNote = '';
-        if (a.yearDeposits > 0 || a.yearWithdrawals > 0 || a.yearInternalIn > 0 || a.yearInternalOut > 0) {
+        if (a.yearDeposits > 0 || a.yearWithdrawals > 0 || a.yearInternalIn > 0 || a.yearInternalOut > 0 || Math.abs(a.yearPromo || 0) > 0.005) {
           let parts = [];
           if (a.yearDeposits > 0) parts.push(`Depositi reali: € ${a.yearDepositsEUR.toFixed(2)}`);
           if (a.yearWithdrawals > 0) parts.push(`Prelievi reali: € ${a.yearWithdrawalsEUR.toFixed(2)}`);
           if (a.yearInternalIn > 0) parts.push(`Trasf. IN da altri conti: € ${a.yearInternalInEUR.toFixed(2)}`);
           if (a.yearInternalOut > 0) parts.push(`Trasf. OUT verso altri conti: € ${a.yearInternalOutEUR.toFixed(2)}`);
+          if (Math.abs(a.yearPromo || 0) > 0.005) parts.push(`Promozioni/rimborsi del broker: € ${a.yearPromoEUR.toFixed(2)}`);
           movNote = `<div style="margin-top:8px;font-size:12px"><strong>Movimentazioni ${year}:</strong><br>${parts.join(' • ')}</div>`;
         }
         const brokerLabel = a.displayCompany || a.company;
@@ -1656,12 +1718,13 @@
           const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
           const blNote = isBlackListYear ? `<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;font-size:12px;color:#991b1b"><strong>⚠️ PAESE BLACK LIST (anno ${year}):</strong> sanzioni RW raddoppiate (6-30%), prescrizione 8 anni</div>` : '';
           let movNote = '';
-          if (a.yearDeposits > 0 || a.yearWithdrawals > 0 || a.yearInternalIn > 0 || a.yearInternalOut > 0) {
+          if (a.yearDeposits > 0 || a.yearWithdrawals > 0 || a.yearInternalIn > 0 || a.yearInternalOut > 0 || Math.abs(a.yearPromo || 0) > 0.005) {
             let parts = [];
             if (a.yearDeposits > 0) parts.push(`Depositi reali: € ${a.yearDepositsEUR.toFixed(2)}`);
             if (a.yearWithdrawals > 0) parts.push(`Prelievi reali: € ${a.yearWithdrawalsEUR.toFixed(2)}`);
             if (a.yearInternalIn > 0) parts.push(`Trasf. IN: € ${a.yearInternalInEUR.toFixed(2)}`);
             if (a.yearInternalOut > 0) parts.push(`Trasf. OUT: € ${a.yearInternalOutEUR.toFixed(2)}`);
+            if (Math.abs(a.yearPromo || 0) > 0.005) parts.push(`Promozioni/rimborsi broker: € ${a.yearPromoEUR.toFixed(2)}`);
             movNote = `<div style="margin-top:8px;font-size:12px"><strong>Movimentazioni ${year}:</strong><br>${parts.join(' • ')}</div>`;
           }
           const brokerLabel = a.displayCompany || a.company;
