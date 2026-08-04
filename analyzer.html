@@ -1025,6 +1025,12 @@
     function createYearAccount(acc, year, timeline, bonus, yearsFound) {
       const ys = new Date(year, 0, 1);
       const ye = new Date(year, 11, 31, 23, 59, 59);
+      // Per l'anno ANCORA IN CORSO il 31 dicembre e' una data futura: non esiste
+      // un cambio BCE e la giacenza finirebbe convertita a zero. Il riferimento
+      // di fine periodo diventa quindi oggi, e i dati dell'anno sono provvisori.
+      const oggi = new Date();
+      const annoInCorso = parseInt(year, 10) === oggi.getFullYear();
+      const yeRif = annoInCorso ? oggi : ye;
       const beforeYear = timeline.filter(e => e.date < ys);
       let valIni = 0;
       
@@ -1064,7 +1070,7 @@
       );
       const fdTY = firstMonetaryTY || timeline.find(e => e.date >= ys && e.date <= ye && e.isDeposit);
       const feTY = timeline.find(e => e.date >= ys && e.date <= ye);
-      const endM = new Date(year, 11, 31);
+      const endM = new Date(yeRif.getFullYear(), yeRif.getMonth(), yeRif.getDate());
       
       // Determina la data di inizio
       let startDate;
@@ -1112,7 +1118,7 @@
       if (lastTYevent && (lastTYevent.balance - bonus) <= 0.50) {
         valoreFinaleDate = lastTYevent.date; // conto chiuso
       } else {
-        valoreFinaleDate = ye; // 31 dicembre
+        valoreFinaleDate = yeRif; // 31 dicembre, oppure oggi se l'anno e' in corso
       }
       
       return {
@@ -1124,7 +1130,7 @@
         // Accumulatori EUR a cambi storici (popolati nel loop trades di consolidateData)
         grossProfitEUR_acc: 0, grossLossEUR_acc: 0, netProfitEUR_acc: 0,
         valoreIniziale: valIni, valoreFinale: valFin, giorni,
-        valoreInizialeDate, valoreFinaleDate,
+        valoreInizialeDate, valoreFinaleDate, annoInCorso,
         ivafe: 0,
         yearDeposits: timeline.filter(e => e.date >= ys && e.date <= ye && e.isDeposit).reduce((s,e) => s + e.amount, 0),
         yearWithdrawals: timeline.filter(e => e.date >= ys && e.date <= ye && e.isWithdrawal).reduce((s,e) => s + Math.abs(e.amount), 0),
@@ -1205,7 +1211,7 @@
         
         yc.innerHTML += `<div class="year-card">
           <div class="year-header">
-            <div class="year-badge">${year}</div>
+            <div class="year-badge">${year}${annoProvvisorio(year) ? ' <span style="font-size:11px;font-weight:600;background:rgba(245,158,11,0.25);color:#fbbf24;padding:2px 8px;border-radius:6px;vertical-align:middle;">in corso</span>' : ''}</div>
             <div class="btn-group">
               <button class="btn btn-secondary" onclick="genRT(${year})">📄 Quadro RT</button>
               <button class="btn btn-secondary" onclick="genRW(${year})">📄 Quadro RW</button>
@@ -1279,6 +1285,16 @@
       }));
     }
 
+    // Un anno non ancora concluso produce numeri provvisori: va detto, sia a
+    // schermo sia sui documenti stampati.
+    function annoProvvisorio(year) {
+      return parseInt(year, 10) === new Date().getFullYear();
+    }
+    function notaAnnoInCorso(year) {
+      if (!annoProvvisorio(year)) return '';
+      return `<p style="margin-top:8px;font-size:11px;color:#92400e;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;"><strong>Anno ancora in corso:</strong> i valori sono provvisori e aggiornati al ${new Date().toLocaleDateString('it-IT')}. Giacenze finali, giorni di detenzione e IVAFE andranno ricalcolati a fine anno.</p>`;
+    }
+
     // Dichiarazione del criterio di conversione: deve comparire su ogni documento
     // consegnato al commercialista.
     function fxMethodNote(year) {
@@ -1313,15 +1329,16 @@
         <div id="rc">
           <div class="header"><h1>📊 QUADRO RT — PLUSVALENZE FINANZIARIE</h1><div class="sub">Anno d'imposta ${year} • Generato il ${new Date().toLocaleDateString('it-IT')}</div></div>
           <div class="section"><h2>📋 Riepilogo</h2>
-            <div class="row"><span>Totale Corrispettivi (RT21)</span><span style="font-weight:600">€ ${(t.grossProfit + Math.abs(t.grossLoss)).toFixed(2)}</span></div>
+            <div class="row"><span>Totale Corrispettivi (RT21)</span><span style="font-weight:600">€ ${t.grossProfit.toFixed(2)}</span></div>
             <div class="row"><span>Totale Costi (RT22)</span><span style="font-weight:600">€ ${Math.abs(t.grossLoss).toFixed(2)}</span></div>
             <div class="row"><span>Plusvalenza Netta (RT23)</span><span style="font-weight:600;color:${t.netProfit>=0?'#22c55e':'#ef4444'}">€ ${t.netProfit.toFixed(2)}</span></div>
+            <p style="font-size:11px;color:#666;margin-top:8px;">RT21 = somma dei differenziali positivi · RT22 = somma dei differenziali negativi · RT23 = RT21 − RT22 = € ${(t.grossProfit - Math.abs(t.grossLoss)).toFixed(2)}</p>
           </div>
           <div class="hl"><div class="label">IMPOSTA SOSTITUTIVA 26% (RT26)</div><div class="value">€ ${imp.toFixed(2)}</div></div>
           <div class="section"><h2>📑 Dettaglio per Account</h2>
             <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rows}</tbody></table>
           </div>
-          <div class="info"><strong>📝 Istruzioni:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}</div>
+          <div class="info"><strong>📝 Istruzioni:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}</div>
           <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RT_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
@@ -1370,7 +1387,7 @@
           <div class="header"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year} • Generato il ${new Date().toLocaleDateString('it-IT')}</div></div>
           <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${accHTML}</div>
           <div class="hl"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
-          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}</div>
+          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}</div>
           <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RW_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
@@ -1407,15 +1424,16 @@
           <div class="quadro-page">
             <div class="header-rt"><h1>📊 QUADRO RT — PLUSVALENZE FINANZIARIE</h1><div class="sub">Anno d'imposta ${year}</div></div>
             <div class="section"><h2>📋 Riepilogo</h2>
-              <div class="row"><span>Totale Corrispettivi (RT21)</span><span style="font-weight:600">€ ${(t.grossProfit + Math.abs(t.grossLoss)).toFixed(2)}</span></div>
+              <div class="row"><span>Totale Corrispettivi (RT21)</span><span style="font-weight:600">€ ${t.grossProfit.toFixed(2)}</span></div>
               <div class="row"><span>Totale Costi (RT22)</span><span style="font-weight:600">€ ${Math.abs(t.grossLoss).toFixed(2)}</span></div>
               <div class="row"><span>Plusvalenza Netta (RT23)</span><span style="font-weight:600;color:${t.netProfit>=0?'#22c55e':'#ef4444'}">€ ${t.netProfit.toFixed(2)}</span></div>
+            <p style="font-size:11px;color:#666;margin-top:8px;">RT21 = somma dei differenziali positivi · RT22 = somma dei differenziali negativi · RT23 = RT21 − RT22 = € ${(t.grossProfit - Math.abs(t.grossLoss)).toFixed(2)}</p>
             </div>
             <div class="hl-rt"><div class="label">IMPOSTA SOSTITUTIVA 26% (RT26)</div><div class="value">€ ${imp.toFixed(2)}</div></div>
             <div class="section"><h2>📑 Dettaglio per Account</h2>
               <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rtRows}</tbody></table>
             </div>
-            <div class="info"><strong>📝 Istruzioni RT:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}</div>
+            <div class="info"><strong>📝 Istruzioni RT:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}</div>
           </div>
         `;
         
@@ -1454,7 +1472,7 @@
             <div class="header-rw"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year}</div></div>
             <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${rwAccounts}</div>
             <div class="hl-rw"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
-            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}</div>
+            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}</div>
           </div>
         `;
       });
