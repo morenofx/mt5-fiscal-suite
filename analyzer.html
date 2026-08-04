@@ -1519,8 +1519,8 @@
         });
         add('Conti collegati di cui manca il report', uscite.length ? 'error' : 'warn',
             (uscite.length
-              ? 'Hai trasferito denaro verso conti di cui non hai caricato il report: quel denaro è uscito dal perimetro monitorato. Se quei conti sono tuoi (wallet del broker o altri conti di trading), la loro giacenza manca dal quadro RW e va aggiunta esportando anche i loro report.'
-              : 'Questi conti hanno versato denaro sui tuoi, ma non hai caricato il loro report. Se sono tuoi, anche la loro giacenza va nel quadro RW.'),
+              ? 'Hai trasferito denaro verso conti di cui non hai caricato il report: quel denaro è uscito dal perimetro monitorato. Se quei conti sono tuoi (wallet del broker, conto IB, altri conti di trading), la loro giacenza manca dal quadro RW e va aggiunta esportando anche i loro report. Attenzione anche alla natura del denaro che ARRIVA da queste controparti: se la fonte è un conto IB o affiliazione, si tratta di provvigioni già maturate altrove, che non compaiono in questi report e vanno dichiarate per conto loro, non come plusvalenza da trading.'
+              : 'Questi conti hanno versato denaro sui tuoi, ma non hai caricato il loro report. Se sono tuoi, anche la loro giacenza va nel quadro RW. E se la fonte è un conto IB o di affiliazione, il denaro che ne arriva è una provvigione maturata altrove: non è una plusvalenza da trading e va dichiarata per conto suo.'),
             righeCp);
       }
 
