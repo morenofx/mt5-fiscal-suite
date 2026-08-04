@@ -1502,7 +1502,11 @@
         let m;
         while ((m = re.exec(com)) !== null) {
           const tok = m[1];
-          const cifre = tok.replace(/\D/g, '');
+          // Il numero di conto e' l'ULTIMO gruppo di cifre del riferimento:
+          // in "US51-Live_60099641" le cifre del server (51, 05) non fanno parte
+          // del conto e, se incluse, farebbero sembrare esterno un conto gia' caricato.
+          const gruppi = tok.match(/\d+/g);
+          const cifre = gruppi ? gruppi[gruppi.length - 1] : '';
           if (!cifre) continue;
           if (noti.some(x => cifre.indexOf(x) !== -1 || x.indexOf(cifre) !== -1)) continue;
           const k = tok + '|' + a.currency;
