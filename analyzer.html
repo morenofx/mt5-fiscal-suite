@@ -440,8 +440,11 @@
       FX.reset();
       showStatus('⏳ Scaricamento serie storica BCE...');
       const res = await FX.ensureYears(Array.from(years));
-      if (res.downloaded === 0) showStatus('❌ Download non riuscito: nessun dato BCE ricevuto. Controlla la connessione.', true);
-      else showStatus(`✅ ${res.downloaded} rilevazioni BCE scaricate (anni ${res.years.join(', ')})`);
+      if (res.falliti && res.falliti.length > 0) {
+        showStatus(`❌ Cambi non scaricati per: ${res.falliti.join(', ')}. La fonte BCE non ha risposto: riprova fra poco o imposta un cambio manuale per quegli anni.`, true);
+      } else {
+        showStatus(`✅ ${res.downloaded} rilevazioni BCE scaricate (anni ${res.years.join(', ')})`);
+      }
       consolidateData(); renderResults(); saveToStorage();
     }
 
@@ -603,6 +606,9 @@
         const fx = await FX.ensureYears(years, (done, tot, y) => {
           dz.innerHTML = `<div class="icon">💱</div><p>Scaricamento cambi BCE ${y} (${done + 1}/${tot})...</p>`;
         });
+        if (fx.falliti && fx.falliti.length > 0) {
+          showStatus(`⚠️ Cambi non disponibili per: ${fx.falliti.join(', ')}. Gli importi in EURO di quegli anni risulteranno incompleti finché non riprovi il download.`, true);
+        }
 
         const errorMsg = errors > 0 ? ` <span style="color:#fbbf24">(${errors} errori)</span>` : '';
         const dupMsg = duplicati > 0 ? ` <span style="color:#fbbf24">• ${duplicati} file già caricati, ignorati</span>` : '';

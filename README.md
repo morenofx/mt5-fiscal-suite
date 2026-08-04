@@ -20,9 +20,11 @@ EUR  = USD * rate
 Le versioni precedenti usavano due convenzioni opposte (`rate` e `1/rate`) anche nello stesso
 file: era la causa principale degli errori di conversione.
 
-**Fonte dati:** tassi di riferimento BCE, serviti dalle API Frankfurter. I cambi pubblicati da
-Banca d'Italia (`tassidicambio.bancaditalia.it`) *sono* i tassi di riferimento BCE, quindi la
-fonte coincide con quella citata dall'Agenzia delle Entrate. Il "cambio medio mensile" viene
+**Fonte dati:** il Data Portal ufficiale della BCE (serie `EXR.D.USD.EUR.SP00.A`, tasso di
+riferimento giornaliero), con le API Frankfurter come sola riserva se il portale non risponde.
+La serie BCE è espressa in dollari per euro e viene invertita per la convenzione della suite.
+I cambi pubblicati da Banca d'Italia (`tassidicambio.bancaditalia.it`) *sono* i tassi di
+riferimento BCE, quindi la fonte coincide con quella citata dall'Agenzia delle Entrate. Il "cambio medio mensile" viene
 calcolato come media aritmetica delle rilevazioni giornaliere del mese, che è esattamente il
 modo in cui viene costruito quello ufficiale.
 

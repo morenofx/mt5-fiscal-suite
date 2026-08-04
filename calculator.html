@@ -610,8 +610,8 @@ function updateRateStatus(res) {
         msg = `✅ ${cov.observations} rilevazioni BCE in memoria (anni: ${cov.years.join(', ')})`;
         status.style.color = '#22c55e';
     }
-    if (res && res.downloaded === 0 && res.years.length > 0) {
-        msg = '❌ Download non riuscito: nessun dato ricevuto dalla BCE. Controlla la connessione, oppure usa il cambio unico manuale (e dichiaralo al commercialista).';
+    if (res && res.falliti && res.falliti.length > 0) {
+        msg = `❌ Cambi non scaricati per: ${res.falliti.join(', ')}. La fonte BCE non ha risposto (connessione assente o servizio momentaneamente occupato). Riprova fra poco, oppure usa il cambio unico manuale dichiarandolo al commercialista.`;
         status.style.color = '#ef4444';
     }
     if (items.length > 0) {

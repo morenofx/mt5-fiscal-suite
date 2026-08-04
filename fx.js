@@ -11,7 +11,9 @@
    e' EUR-per-USD. Le vecchie versioni usavano due convenzioni opposte nello
    stesso file (rate e 1/rate): era la causa principale degli errori di cambio.
 
-   FONTE DATI: tassi di riferimento BCE, serviti dalle API Frankfurter.
+   FONTE DATI: tassi di riferimento BCE, presi in primo luogo dal Data Portal
+   ufficiale della BCE (serie EXR.D.USD.EUR.SP00.A) e, solo se non risponde,
+   dalle API Frankfurter che ridistribuiscono gli stessi dati.
    I cambi pubblicati dalla Banca d'Italia (tassidicambio.bancaditalia.it) SONO
    i tassi di riferimento BCE: la fonte quindi coincide con quella ufficiale
    citata dall'Agenzia delle Entrate. Il "cambio medio mensile" ufficiale e' la
@@ -30,10 +32,6 @@
   'use strict';
 
   var CACHE_KEY = 'mt5fs_fx_ecb_usdeur_v1';
-  var ENDPOINTS = [
-    function (range) { return 'https://api.frankfurter.dev/v1/' + range + '?base=USD&symbols=EUR'; },
-    function (range) { return 'https://api.frankfurter.app/' + range + '?from=USD&to=EUR'; }
-  ];
 
   // rates:  'YYYY-MM-DD' -> number (EUR per 1 USD), solo rilevazioni BCE reali
   // manual: 'YYYY-MM-DD' -> number, forzature dell'utente
@@ -87,30 +85,84 @@
   /* ---------------------------------------------------------------------------
      DOWNLOAD
      ------------------------------------------------------------------------- */
-  function fetchJson(url, ms) {
+  function fetchText(url, ms) {
     var ctrl = new AbortController();
-    var timer = setTimeout(function () { ctrl.abort(); }, ms || 12000);
+    var timer = setTimeout(function () { ctrl.abort(); }, ms || 20000);
     return fetch(url, { signal: ctrl.signal })
-      .then(function (r) { clearTimeout(timer); return r.ok ? r.json() : null; })
+      .then(function (r) { clearTimeout(timer); return r.ok ? r.text() : null; })
       .catch(function () { clearTimeout(timer); return null; });
   }
 
-  // Scarica un intervallo intero in UNA sola chiamata (serie storica BCE).
-  // Molto piu' affidabile e veloce di una richiesta per data.
-  function fetchRange(fromISO, toISOStr) {
+  function store_(day, value) {
+    if (typeof value === 'number' && isFinite(value) && value > 0) { store.rates[day] = value; return 1; }
+    return 0;
+  }
+
+  // FONTE 1 — Data Portal della BCE: la fonte primaria e ufficiale.
+  // Serie EXR.D.USD.EUR.SP00.A = tasso di riferimento giornaliero, espresso in
+  // DOLLARI per 1 EURO: va invertito per ottenere la convenzione della suite.
+  function fetchEcb(fromISO, toISOStr) {
+    var url = 'https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A' +
+              '?startPeriod=' + fromISO + '&endPeriod=' + toISOStr + '&format=csvdata&detail=dataonly';
+    return fetchText(url).then(function (txt) {
+      if (!txt) return 0;
+      var lines = txt.trim().split(/\r?\n/);
+      if (lines.length < 2) return 0;
+      var head = lines[0].split(',');
+      var iDay = head.indexOf('TIME_PERIOD');
+      var iVal = head.indexOf('OBS_VALUE');
+      if (iDay < 0 || iVal < 0) return 0;
+      var n = 0;
+      for (var k = 1; k < lines.length; k++) {
+        var c = lines[k].split(',');
+        var day = c[iDay];
+        var usdPerEur = parseFloat(c[iVal]);
+        if (day && isFinite(usdPerEur) && usdPerEur > 0) n += store_(day, 1 / usdPerEur);
+      }
+      return n;
+    });
+  }
+
+  // FONTE 2 — Frankfurter, che ridistribuisce gli stessi dati BCE.
+  // Serve solo se il Data Portal non risponde. Restituisce gia' EUR per 1 USD.
+  function fetchFrankfurter(fromISO, toISOStr) {
     var range = fromISO + '..' + toISOStr;
+    var urls = [
+      'https://api.frankfurter.dev/v1/' + range + '?base=USD&symbols=EUR',
+      'https://api.frankfurter.app/' + range + '?from=USD&to=EUR'
+    ];
     var i = 0;
     function attempt() {
-      if (i >= ENDPOINTS.length) return Promise.resolve(0);
-      var url = ENDPOINTS[i++](range);
-      return fetchJson(url).then(function (d) {
+      if (i >= urls.length) return Promise.resolve(0);
+      return fetchText(urls[i++]).then(function (txt) {
+        if (!txt) return attempt();
+        var d;
+        try { d = JSON.parse(txt); } catch (e) { return attempt(); }
         if (!d || !d.rates) return attempt();
         var n = 0;
         Object.keys(d.rates).forEach(function (day) {
-          var v = d.rates[day] && d.rates[day].EUR;
-          if (typeof v === 'number' && isFinite(v) && v > 0) { store.rates[day] = v; n++; }
+          n += store_(day, d.rates[day] && d.rates[day].EUR);
         });
         return n > 0 ? n : attempt();
+      });
+    }
+    return attempt();
+  }
+
+  var SOURCES = [
+    { name: 'ECB', run: fetchEcb },
+    { name: 'FRANKFURTER', run: fetchFrankfurter }
+  ];
+
+  // Scarica un intervallo intero in UNA sola chiamata. Prova le fonti in ordine:
+  // basta che una risponda. Ritorna { n, src }.
+  function fetchRange(fromISO, toISOStr) {
+    var i = 0;
+    function attempt() {
+      if (i >= SOURCES.length) return Promise.resolve({ n: 0, src: null });
+      var s = SOURCES[i++];
+      return s.run(fromISO, toISOStr).then(function (n) {
+        return n > 0 ? { n: n, src: s.name } : attempt();
       });
     }
     return attempt();
@@ -127,28 +179,35 @@
       y = parseInt(y, 10);
       if (!y || y < 1999 || y > nowYear) return;
       var stamp = store.years[y];
-      var stale = !stamp || (y === nowYear && stamp.slice(0, 10) !== today);
+      var at = stamp ? (typeof stamp === 'string' ? stamp : stamp.at) : null;
+      var stale = !at || (y === nowYear && at.slice(0, 10) !== today);
       if (stale && wanted.indexOf(y) === -1) wanted.push(y);
     });
-    if (wanted.length === 0) return Promise.resolve({ downloaded: 0, years: [] });
+    if (wanted.length === 0) return Promise.resolve({ downloaded: 0, years: [], falliti: [] });
 
-    wanted.sort();
-    var done = 0, total = 0;
+    wanted.sort(function (a, b) { return a - b; });
+    var done = 0, total = 0, falliti = [], sorgenti = {};
     var chain = Promise.resolve();
     wanted.forEach(function (y) {
       chain = chain.then(function () {
         if (onProgress) onProgress(done, wanted.length, y);
         var from = y + '-01-01';
         var to = (y === nowYear) ? today : (y + '-12-31');
-        return fetchRange(from, to).then(function (n) {
+        return fetchRange(from, to).then(function (res) {
           done++;
-          if (n > 0) { store.years[y] = new Date().toISOString(); total += n; }
+          if (res.n > 0) {
+            store.years[y] = { at: new Date().toISOString(), src: res.src };
+            sorgenti[res.src] = (sorgenti[res.src] || 0) + 1;
+            total += res.n;
+          } else {
+            falliti.push(y);
+          }
         });
       });
     });
     return chain.then(function () {
       saveCache();
-      return { downloaded: total, years: wanted };
+      return { downloaded: total, years: wanted, falliti: falliti, sorgenti: sorgenti };
     });
   }
 
@@ -270,10 +329,17 @@
      ------------------------------------------------------------------------- */
   function coverage() {
     var years = Object.keys(store.years).sort();
+    var srcs = {};
+    years.forEach(function (y) {
+      var st = store.years[y];
+      var name = (st && typeof st === 'object' && st.src) ? st.src : 'ECB';
+      srcs[name] = (srcs[name] || 0) + 1;
+    });
     return {
       years: years,
       observations: Object.keys(store.rates).length,
-      manual: Object.keys(store.manual).length
+      manual: Object.keys(store.manual).length,
+      sources: srcs
     };
   }
 
