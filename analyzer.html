@@ -776,6 +776,10 @@
             let totalInternalIn = 0, totalInternalOut = 0, totalPnlAdj = 0;
             let totalPromo = 0, totalReversals = 0;
             let firstDealEntry = null, lastDealEntry = null;
+            // Primo e ultimo movimento di OGNI anno: senza questi il saldo di fine
+            // anno sarebbe quello dell'ultimo deposito, non quello reale dopo
+            // l'ultimo trade dell'anno.
+            const primoDelAnno = {}, ultimoDelAnno = {};
             
             // Classifica un movimento balance dalle parole nel commento
             // - 'transfer' (in/out, from/to), 'autotrf', 'tfr' → trasferimento INTERNO tra conti dello stesso titolare
@@ -855,6 +859,9 @@
                 const entry = { date: entryDate, balance, amount, type, comment: commentRaw };
                 if (!firstDealEntry) firstDealEntry = entry;
                 lastDealEntry = entry;
+                const annoRiga = entryDate.getFullYear();
+                if (!primoDelAnno[annoRiga]) primoDelAnno[annoRiga] = entry;
+                ultimoDelAnno[annoRiga] = entry;
                 
                 const isCredit = type === 'credit';
                 const isBalanceOp = type === 'balance';
@@ -943,13 +950,17 @@
               valoreFinale = lastDealEntry ? Math.max(0, lastDealEntry.balance - totalBonusCredits) : valoreIniziale;
             }
             
-            // Add first/last deal to timeline for date range
-            if (firstDealEntry && (balanceTimeline.length === 0 || balanceTimeline[0].date.getTime() > firstDealEntry.date.getTime())) {
-              balanceTimeline.unshift({ ...firstDealEntry, category: 'trade_marker', isCredit: false, isDeposit: false, isWithdrawal: false, isInternalIn: false, isInternalOut: false, isSwapAdj: false });
-            }
-            if (lastDealEntry && (balanceTimeline.length === 0 || balanceTimeline[balanceTimeline.length-1].date.getTime() < lastDealEntry.date.getTime())) {
-              balanceTimeline.push({ ...lastDealEntry, category: 'trade_marker', isCredit: false, isDeposit: false, isWithdrawal: false, isInternalIn: false, isInternalOut: false, isSwapAdj: false });
-            }
+            // Segnaposto di apertura e chiusura per OGNI anno presente nel report:
+            // fissano il saldo reale a fine anno, che e' quello che il quadro RW
+            // chiede, invece del saldo all'ultimo movimento di cassa.
+            const marcatore = e => ({ ...e, category: 'trade_marker', isCredit: false,
+              isDeposit: false, isWithdrawal: false, isInternalIn: false,
+              isInternalOut: false, isSwapAdj: false, isPromo: false, isReversal: false });
+            const giaPresente = e => balanceTimeline.some(x => x.date.getTime() === e.date.getTime() && x.balance === e.balance);
+            Object.keys(primoDelAnno).forEach(y => { if (!giaPresente(primoDelAnno[y])) balanceTimeline.push(marcatore(primoDelAnno[y])); });
+            Object.keys(ultimoDelAnno).forEach(y => { if (!giaPresente(ultimoDelAnno[y])) balanceTimeline.push(marcatore(ultimoDelAnno[y])); });
+            // Tutto il resto del calcolo assume la timeline in ordine cronologico.
+            balanceTimeline.sort((a, b) => a.date.getTime() - b.date.getTime());
             
             resolve({
               accountName, accountNumber, company, displayCompany, serverName, currency, countryInfo,
