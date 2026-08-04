@@ -1489,6 +1489,41 @@
           rt.length ? 'Corrispettivi meno costi non danno la plusvalenza dichiarata.'
                     : 'Per ogni anno RT21 − RT22 = RT23.', rt);
 
+      // --- 8bis. Controparti dei giroconti di cui manca il report ---
+      // Un giroconto verso un conto non caricato significa denaro che esce dal
+      // perimetro monitorato: se quel conto e' del contribuente, la sua giacenza
+      // manca dal quadro RW.
+      const noti = accounts.map(a => a.accountNumber).filter(Boolean);
+      const controparti = {};
+      accounts.forEach(a => (a.balanceTimeline || []).forEach(e => {
+        if (!e.isInternalIn && !e.isInternalOut) return;
+        const com = e.comment || '';
+        const re = /(?:from|fr|to)\s+([A-Za-z_]*\d[\w-]*)/gi;
+        let m;
+        while ((m = re.exec(com)) !== null) {
+          const tok = m[1];
+          const cifre = tok.replace(/\D/g, '');
+          if (!cifre) continue;
+          if (noti.some(x => cifre.indexOf(x) !== -1 || x.indexOf(cifre) !== -1)) continue;
+          const k = tok + '|' + a.currency;
+          controparti[k] = (controparti[k] || 0) + (e.amount || 0);
+        }
+      }));
+      const chiavi = Object.keys(controparti).sort((x, z) => Math.abs(controparti[z]) - Math.abs(controparti[x]));
+      const uscite = chiavi.filter(k => controparti[k] < -0.005);
+      if (chiavi.length) {
+        const righeCp = chiavi.map(k => {
+          const [tok, cur] = k.split('|');
+          const v = controparti[k];
+          return `${tok}: ${v > 0 ? 'ricevuti da lui' : 'inviati a lui'} ${Math.abs(v).toFixed(2)} ${cur} (saldo netto dei giroconti)`;
+        });
+        add('Conti collegati di cui manca il report', uscite.length ? 'error' : 'warn',
+            (uscite.length
+              ? 'Hai trasferito denaro verso conti di cui non hai caricato il report: quel denaro è uscito dal perimetro monitorato. Se quei conti sono tuoi (wallet del broker o altri conti di trading), la loro giacenza manca dal quadro RW e va aggiunta esportando anche i loro report.'
+              : 'Questi conti hanno versato denaro sui tuoi, ma non hai caricato il loro report. Se sono tuoi, anche la loro giacenza va nel quadro RW.'),
+            righeCp);
+      }
+
       // --- 9. Promozioni e rimborsi del broker ---
       const promo = [];
       accounts.forEach(a => (a.balanceTimeline || []).forEach(e => {
