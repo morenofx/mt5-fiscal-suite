@@ -1519,7 +1519,12 @@
         const righeCp = chiavi.map(k => {
           const [tok, cur] = k.split('|');
           const v = controparti[k];
-          return `${tok}: ${v > 0 ? 'ricevuti da lui' : 'inviati a lui'} ${Math.abs(v).toFixed(2)} ${cur} (saldo netto dei giroconti)`;
+          // Un wallet del broker (suffisso CW, o la parola wallet) non e' un conto
+          // di trading: non esiste un report MT5 da esportare, ma il saldo che vi
+          // resta a fine anno e' comunque denaro detenuto all'estero.
+          const isWallet = /cw$/i.test(tok) || /wallet/i.test(tok);
+          const nota = isWallet ? ' — sembra un wallet del broker: nessun report MT5 da esportare, il saldo a fine anno va preso dal portale' : '';
+          return `${tok}: ${v > 0 ? 'ricevuti da lui' : 'inviati a lui'} ${Math.abs(v).toFixed(2)} ${cur} (saldo netto dei giroconti)${nota}`;
         });
         add('Conti collegati di cui manca il report', uscite.length ? 'error' : 'warn',
             (uscite.length
