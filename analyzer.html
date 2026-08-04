@@ -1,0 +1,1677 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MT5 Fiscal Analyzer v3 — Quadro RT & RW</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="fx.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --surface: #131720;
+      --surface2: #1a1f2e;
+      --border: #252d3d;
+      --border-light: #2e3a4e;
+      --text: #e2e8f0;
+      --text-dim: #7c8db5;
+      --text-muted: #4a5878;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.15);
+      --green: #10b981;
+      --green-dim: rgba(16, 185, 129, 0.12);
+      --red: #ef4444;
+      --red-dim: rgba(239, 68, 68, 0.12);
+      --gold: #f59e0b;
+      --gold-dim: rgba(245, 158, 11, 0.12);
+      --purple: #8b5cf6;
+      --radius: 12px;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      font-family: 'DM Sans', sans-serif;
+      color: var(--text);
+      padding: 32px 20px;
+      line-height: 1.5;
+    }
+    
+    .container { max-width: 1080px; margin: 0 auto; }
+    
+    /* Header */
+    .header { text-align: center; margin-bottom: 40px; }
+    .header-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--accent-glow); border: 1px solid rgba(59,130,246,0.25);
+      border-radius: 100px; padding: 6px 18px; margin-bottom: 16px;
+      font-size: 12px; font-weight: 600; color: var(--accent);
+      letter-spacing: 1.5px; text-transform: uppercase;
+    }
+    h1 { font-size: clamp(26px, 4vw, 38px); font-weight: 700; color: #fff; }
+    .subtitle { font-size: 14px; color: var(--text-dim); margin-top: 6px; }
+    
+    /* Cards */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 13px; font-weight: 700; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 16px;
+    }
+    
+    /* Stats */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px; margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px; text-align: center;
+    }
+    .stat-number {
+      font-size: 26px; font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .stat-label { font-size: 11px; color: var(--text-dim); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border-light); border-radius: 16px;
+      padding: 56px 24px; text-align: center; cursor: pointer;
+      transition: all 0.3s ease; position: relative;
+    }
+    .drop-zone:hover, .drop-zone.active {
+      border-color: var(--accent); background: var(--accent-glow);
+    }
+    .drop-zone .icon { font-size: 48px; margin-bottom: 12px; }
+    .drop-zone p { color: var(--text-dim); }
+    .drop-zone .hint { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+    
+    /* Forms */
+    .form-row {
+      display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 120px; }
+    label { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    input, select {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; color: #fff;
+      font-size: 14px; font-family: 'DM Sans', sans-serif;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    
+    /* Buttons */
+    .btn {
+      padding: 10px 20px; border-radius: 8px; font-weight: 600;
+      font-size: 13px; cursor: pointer; border: none;
+      font-family: 'DM Sans', sans-serif; display: inline-flex;
+      align-items: center; gap: 6px; transition: all 0.2s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { box-shadow: 0 0 20px rgba(59,130,246,0.4); transform: translateY(-1px); }
+    .btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--surface2); }
+    .btn-danger { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+    .btn-danger:hover { background: rgba(239,68,68,0.2); }
+    .btn-success { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    
+    /* Results */
+    .year-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; margin-bottom: 20px;
+    }
+    .year-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+    }
+    .year-badge {
+      font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+      background: linear-gradient(135deg, var(--accent), #6366f1);
+      padding: 8px 20px; border-radius: 10px; color: #fff;
+    }
+    .account-row {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 10px; padding: 14px; background: var(--surface2);
+      border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border);
+      align-items: start;
+    }
+    .account-stat { text-align: center; min-width: 0; }
+    .account-stat .label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; }
+    .account-stat .value { font-size: 13px; font-weight: 600; margin-top: 3px; font-family: 'JetBrains Mono', monospace; word-break: break-word; }
+    .profit { color: var(--green); }
+    .loss { color: var(--red); }
+    
+    .info-box {
+      padding: 14px; border-radius: 8px; font-size: 12px; margin-top: 12px;
+      background: var(--accent-glow); border: 1px solid rgba(59,130,246,0.2); color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    
+    /* Status */
+    .status {
+      padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px;
+      animation: fadeIn 0.3s ease;
+    }
+    .status.success { background: var(--green-dim); border: 1px solid rgba(16,185,129,0.3); color: var(--green); }
+    .status.error { background: var(--red-dim); border: 1px solid rgba(239,68,68,0.3); color: var(--red); }
+    
+    /* Responsive */
+    @media (max-width: 640px) {
+      .form-row { flex-direction: column; }
+      .btn-group { flex-direction: column; }
+      .btn { width: 100%; justify-content: center; }
+      .year-header { flex-direction: column; gap: 12px; }
+    }
+    
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .text-green { color: var(--green); }
+    .text-red { color: var(--red); }
+    .text-gold { color: var(--gold); }
+    .text-accent { color: var(--accent); }
+    .text-purple { color: var(--purple); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <div class="header">
+      <div style="text-align:left;margin-bottom:10px;"><a href="index.html" style="color:var(--accent);text-decoration:none;font-size:13px;">← Torna alla suite</a></div>
+      <div class="header-badge">📊 Dichiarazione Fiscale</div>
+      <h1>MT5 Fiscal Analyzer <span style="font-size:14px;background:rgba(34,197,94,0.15);color:#22c55e;padding:4px 10px;border-radius:6px;vertical-align:middle;font-weight:600;">v3</span></h1>
+      <p class="subtitle">Quadro RT (Plusvalenze) & RW (Monitoraggio Conti Esteri) — Genera documenti per il commercialista</p>
+    </div>
+    
+    <div id="statusMsg"></div>
+    
+    <!-- Drop Zone -->
+    <div class="card">
+      <div class="card-title">📂 Carica Report MT5</div>
+      <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+        <div class="icon">📊</div>
+        <p>Trascina qui i report MT5 (.xlsx) <strong>o un'intera cartella</strong></p>
+        <p class="hint">💡 MT5 → Toolbox → Cronologia → Tasto destro → Report → Excel</p>
+        <p class="hint" style="margin-top:6px;">📁 Supporto cartelle con sottodirectory (drag&drop o pulsanti sotto)</p>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()" style="flex:1;min-width:180px;">📄 Seleziona file</button>
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('folderInput').click()" style="flex:1;min-width:180px;">📁 Seleziona cartella</button>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="handleFiles(event)">
+      <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;" onchange="handleFiles(event)">
+    </div>
+    
+    <!-- Cambi EUR/USD -->
+    <div id="currencySection" class="card" style="display:none;">
+      <div class="card-title">💱 Cambi USD → EUR (fonte BCE)</div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
+        I conti in USD vengono convertiti con il <strong>cambio BCE del giorno</strong> di ogni singola operazione: ogni trade al cambio della sua data, ogni deposito e prelievo al cambio del suo giorno, i saldi alle rispettive date di riferimento.
+        Convenzione usata ovunque: <strong>1 USD = X EUR</strong>. Se il commercialista chiede un cambio unico per un anno, cambia modalità qui sotto: la scelta viene applicata davvero a tutti i calcoli di quell'anno.
+      </p>
+      <div class="form-row" id="exchangeRatesUI"></div>
+      <div id="fxQuality" style="margin-top:12px;"></div>
+      <button class="btn btn-secondary" onclick="resetExchangeRates()" style="margin-top:8px;">🔄 Riscarica cambi BCE</button>
+    </div>
+    
+    <!-- Risultati -->
+    <div id="resultsSection" style="display:none;">
+      
+      <!-- Riepilogo -->
+      <div class="card" style="background:linear-gradient(135deg, rgba(59,130,246,0.08), rgba(99,102,241,0.08));">
+        <div class="card-title">📊 Riepilogo Totale</div>
+        <div class="stats-grid" id="totalStats"></div>
+      </div>
+
+      <!-- Grafici -->
+      <div class="card">
+        <div class="card-title">📈 Grafici</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <div><div style="font-size:12px;margin-bottom:8px;color:#94a3b8;letter-spacing:.5px;">PROFITTO NETTO PER ANNO (EUR)</div><div style="height:240px;position:relative;"><canvas id="chYear"></canvas></div></div>
+          <div><div style="font-size:12px;margin-bottom:8px;color:#94a3b8;letter-spacing:.5px;">IMPOSTE PER ANNO (EUR)</div><div style="height:240px;position:relative;"><canvas id="chTax"></canvas></div></div>
+          <div><div style="font-size:12px;margin-bottom:8px;color:#94a3b8;letter-spacing:.5px;">PROFITTO NETTO PER SIMBOLO (EUR)</div><div style="height:240px;position:relative;"><canvas id="chSym"></canvas></div></div>
+          <div><div style="font-size:12px;margin-bottom:8px;color:#94a3b8;letter-spacing:.5px;">PROFITTO PER CONTO (EUR)</div><div style="height:240px;position:relative;"><canvas id="chAcc"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Per Anno -->
+      <div id="yearlyResults"></div>
+      
+      <!-- Azioni -->
+      <div class="card">
+        <div class="card-title">📑 Esporta</div>
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="exportAllPDF()">📄 PDF Unico (tutti gli anni)</button>
+          <button class="btn btn-primary" onclick="exportPerYearPDF()">📅 PDF Per Anno (separati)</button>
+          <button class="btn btn-secondary" onclick="exportCSV()">📥 Export CSV</button>
+          <button class="btn btn-danger" onclick="clearData()">🗑️ Cancella Dati</button>
+        </div>
+      </div>
+    </div>
+    
+  </div>
+
+  <script>
+    // ==================== GLOBALS ====================
+    let accounts = [];
+    let yearlyData = {};
+
+    // ---- CAMBI ----------------------------------------------------------
+    // Convenzione unica (vedi fx.js): rate = EURO per 1 DOLLARO. EUR = USD * rate.
+    // Nessun cambio "di ripiego" precaricato: se la BCE non ha il dato, il valore
+    // manca ed e' dichiarato come tale. Un cambio inventato su una dichiarazione
+    // fiscale e' peggio di un dato assente.
+    let yearMode = {};   // anno -> 'daily' (cambio BCE del giorno) | 'fixed' (unico manuale)
+    let yearFixed = {};  // anno -> cambio unico manuale, EUR per 1 USD
+    let fxStats = { bce: 0, prec: 0, manuale: 0, mancanti: 0, usdNonConvertiti: 0 };
+    
+    // Broker → Paese mapping (entità giuridica reale)
+    // blackList = paese a fiscalità privilegiata DM 4/5/1999 → sanzioni RW raddoppiate, prescrizione 8 anni
+    // Nota: Cayman uscita dalla black list dal 2023; mantenuta per anni precedenti
+    const brokerCountries = {
+      // IC Markets — Raw Trading Ltd è l'entità Seychelles (server SC)
+      // Nota: Seychelles era in black list italiana (DM 4/5/1999), uscita di fatto nel 2017 dopo modifiche legislative
+      // Per cautela manteniamo flag fino al 2017 (tutti i tuoi anni di trading sono dopo, quindi NON black list)
+      'raw trading': { code: '690', name: 'Seychelles', displayName: 'IC Markets (Raw Trading Ltd)', blackList: true, blackListUntil: 2017 },
+      'international capital markets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false },
+      'ic markets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false },
+      'icmarkets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false },
+      // Vantage — distinguere entità: International (Cayman) vs Global Prime (UK) vs altre
+      'vantage international': { code: '136', name: 'Cayman Islands', displayName: 'Vantage (Cayman)', blackList: true, blackListUntil: 2022 },
+      'vantage global': { code: '826', name: 'Regno Unito', displayName: 'Vantage (UK)', blackList: false },
+      'vantage': { code: '136', name: 'Cayman Islands', displayName: 'Vantage', blackList: true, blackListUntil: 2022 },
+      // AxiCorp — Pty Ltd = Australia, AxiCorp Limited = UK
+      'axicorp financial services pty': { code: '036', name: 'Australia', displayName: 'AxiCorp (AU)', blackList: false },
+      'axicorp limited': { code: '826', name: 'Regno Unito', displayName: 'Axi (UK)', blackList: false },
+      'axicorp': { code: '036', name: 'Australia', displayName: 'AxiCorp', blackList: false },
+      'axi': { code: '036', name: 'Australia', displayName: 'Axi', blackList: false },
+      'axitrader': { code: '036', name: 'Australia', displayName: 'AxiTrader', blackList: false },
+      // Altri broker comuni
+      'pepperstone': { code: '036', name: 'Australia', displayName: 'Pepperstone', blackList: false },
+      'fpmarkets': { code: '036', name: 'Australia', displayName: 'FP Markets', blackList: false },
+      'fp markets': { code: '036', name: 'Australia', displayName: 'FP Markets', blackList: false },
+      'fxpro': { code: '196', name: 'Cipro', displayName: 'FxPro', blackList: false },
+      'xm': { code: '196', name: 'Cipro', displayName: 'XM', blackList: false },
+      'exness': { code: '196', name: 'Cipro', displayName: 'Exness', blackList: false },
+      'roboforex': { code: '196', name: 'Cipro', displayName: 'RoboForex', blackList: false },
+      'fxtm': { code: '196', name: 'Cipro', displayName: 'FXTM', blackList: false },
+      'hotforex': { code: '196', name: 'Cipro', displayName: 'HotForex', blackList: false },
+      'hfm': { code: '196', name: 'Cipro', displayName: 'HFM', blackList: false },
+      'tickmill': { code: '826', name: 'Regno Unito', displayName: 'Tickmill', blackList: false },
+      'fxcm': { code: '826', name: 'Regno Unito', displayName: 'FXCM', blackList: false },
+      'oanda': { code: '826', name: 'Regno Unito', displayName: 'Oanda', blackList: false },
+      'ig': { code: '826', name: 'Regno Unito', displayName: 'IG', blackList: false },
+      'admirals': { code: '372', name: 'Estonia', displayName: 'Admirals', blackList: false },
+      'admiral markets': { code: '372', name: 'Estonia', displayName: 'Admiral Markets', blackList: false },
+      'default': { code: '196', name: 'Cipro', displayName: 'Broker estero', blackList: false }
+    };
+    
+    // ==================== UI HELPERS ====================
+    function showStatus(msg, isError = false) {
+      const el = document.getElementById('statusMsg');
+      el.innerHTML = `<div class="status ${isError ? 'error' : 'success'}">${msg}</div>`;
+      setTimeout(() => el.innerHTML = '', 5000);
+    }
+    
+    // ==================== MOTORE CAMBI (fx.js) ====================
+    // Cambio applicabile a una data, rispettando la modalita' scelta per l'anno.
+    function rateAt(dateLike, year) {
+      const y = parseInt(year, 10);
+      if (yearMode[y] === 'fixed' && yearFixed[y]) {
+        return { rate: yearFixed[y], source: 'MANUALE', refDate: 'anno ' + y };
+      }
+      return FX.rate(FX.toISO(dateLike));
+    }
+
+    // Cambio rappresentativo dell'anno (31/12): usato per le voci non databili,
+    // come il bonus/credit cumulato del conto.
+    function yearRate(year) {
+      const y = parseInt(year, 10);
+      if (yearMode[y] === 'fixed' && yearFixed[y]) {
+        return { rate: yearFixed[y], source: 'MANUALE', refDate: 'anno ' + y };
+      }
+      return FX.yearEnd(y);
+    }
+
+    // USD -> EUR con statistica della qualita' del dato.
+    // Se il cambio manca ritorna 0 e lo contabilizza: il totale mancante viene
+    // mostrato a schermo, mai nascosto.
+    function usdToEur(amountUsd, dateLike, year) {
+      const r = rateAt(dateLike, year);
+      if (r.rate == null) {
+        fxStats.mancanti++;
+        fxStats.usdNonConvertiti += Math.abs(amountUsd || 0);
+        return 0;
+      }
+      if (r.source === 'MANUALE') fxStats.manuale++;
+      else if (r.source === 'BCE_PREC') fxStats.prec++;
+      else fxStats.bce++;
+      return (amountUsd || 0) * r.rate;
+    }
+
+    // Converte solo se il conto e' in USD; se e' gia' in EUR lascia il valore.
+    function toEur(amount, currency, dateLike, year) {
+      if (currency === 'EUR') return amount;
+      return usdToEur(amount, dateLike, year);
+    }
+
+    function setYearMode(year, mode) {
+      yearMode[year] = mode;
+      consolidateData(); renderResults(); saveToStorage();
+    }
+
+    function setYearFixed(year, value) {
+      const v = parseFloat(value);
+      if (isFinite(v) && v > 0) {
+        if (!FX.isPlausible(v)) {
+          alert('Attenzione: ' + v + ' non sembra un cambio EUR per dollaro.\n\n' +
+                'Qui va indicato quanti EURO vale UN DOLLARO (tipicamente fra 0.80 e 1.00).\n' +
+                'Se hai il cambio "dollari per euro" (es. 1.08), inserisci ' + (1/v).toFixed(4) + '.');
+        }
+        yearFixed[year] = v;
+      } else {
+        delete yearFixed[year];
+      }
+      consolidateData(); renderResults(); saveToStorage();
+    }
+
+    function renderExchangeRates(years) {
+      const container = document.getElementById('exchangeRatesUI');
+      container.innerHTML = '';
+      Array.from(years).sort().forEach(year => {
+        const ye = FX.yearEnd(year);
+        const mode = yearMode[year] || 'daily';
+        const fixed = yearFixed[year] != null ? yearFixed[year] : (ye.rate || 0.92);
+        const badge = ye.rate != null
+          ? `<span style="font-size:10px;color:var(--green);">BCE ${ye.refDate}: ${ye.rate.toFixed(4)}</span>`
+          : `<span style="font-size:10px;color:var(--gold);">⚠️ nessun dato BCE</span>`;
+        const div = document.createElement('div');
+        div.className = 'form-group';
+        div.style.minWidth = '250px';
+        div.innerHTML = `<label>${year} ${badge}</label>
+          <select onchange="setYearMode(${year}, this.value)">
+            <option value="daily" ${mode === 'daily' ? 'selected' : ''}>Cambio BCE del giorno</option>
+            <option value="fixed" ${mode === 'fixed' ? 'selected' : ''}>Cambio unico manuale</option>
+          </select>
+          <input type="number" step="0.0001" value="${fixed.toFixed(4)}" title="EUR per 1 USD"
+                 ${mode === 'fixed' ? '' : 'style="display:none;"'}
+                 onchange="setYearFixed(${year}, this.value)">`;
+        container.appendChild(div);
+      });
+      renderFxQuality();
+    }
+
+    // Dichiara sempre con quali dati sono stati fatti i conti.
+    function renderFxQuality() {
+      const el = document.getElementById('fxQuality');
+      if (!el) return;
+      const tot = fxStats.bce + fxStats.prec + fxStats.manuale + fxStats.mancanti;
+      if (tot === 0) { el.innerHTML = ''; return; }
+      let html = '<div class="info-box">Conversioni USD→EUR: ' +
+        `<strong>${fxStats.bce}</strong> al cambio BCE del giorno` +
+        (fxStats.prec ? `, <strong>${fxStats.prec}</strong> con ultima rilevazione precedente (giorni non quotati)` : '') +
+        (fxStats.manuale ? `, <strong>${fxStats.manuale}</strong> a cambio manuale` : '') +
+        '.</div>';
+      if (fxStats.mancanti > 0) {
+        html += `<div class="status error" style="margin-top:8px;">❌ ${fxStats.mancanti} conversioni senza cambio disponibile ` +
+          `($${fxStats.usdNonConvertiti.toFixed(2)} non convertiti): gli importi in EURO sono incompleti. ` +
+          `Clicca "Riscarica cambi BCE" o imposta un cambio manuale per l'anno interessato.</div>`;
+      }
+      el.innerHTML = html;
+    }
+
+    async function resetExchangeRates() {
+      const years = new Set();
+      accounts.forEach(a => {
+        a.trades.forEach(t => years.add(t.date.getFullYear()));
+        (a.balanceTimeline || []).forEach(e => years.add(e.date.getFullYear()));
+      });
+      if (years.size === 0) { showStatus('⚠️ Carica prima dei report MT5', true); return; }
+      FX.reset();
+      showStatus('⏳ Scaricamento serie storica BCE...');
+      const res = await FX.ensureYears(Array.from(years));
+      if (res.downloaded === 0) showStatus('❌ Download non riuscito: nessun dato BCE ricevuto. Controlla la connessione.', true);
+      else showStatus(`✅ ${res.downloaded} rilevazioni BCE scaricate (anni ${res.years.join(', ')})`);
+      consolidateData(); renderResults(); saveToStorage();
+    }
+
+    // ==================== LOCALSTORAGE ====================
+    function saveToStorage() {
+      try {
+        const toSave = accounts.map(a => ({
+          ...a,
+          trades: a.trades.map(t => ({ ...t, date: t.date.toISOString() })),
+          balanceTimeline: (a.balanceTimeline || []).map(e => ({ ...e, date: e.date.toISOString() })),
+          minDate: a.minDate?.toISOString() || null,
+          maxDate: a.maxDate?.toISOString() || null
+        }));
+        localStorage.setItem('mt5fa_accounts', JSON.stringify(toSave));
+        localStorage.setItem('mt5fa_yearmode', JSON.stringify(yearMode));
+        localStorage.setItem('mt5fa_yearfixed', JSON.stringify(yearFixed));
+      } catch (e) { console.warn('Save error:', e); }
+    }
+    
+    function loadFromStorage() {
+      try {
+        const s = localStorage.getItem('mt5fa_accounts');
+        if (!s) return false;
+        accounts = JSON.parse(s).map(a => ({
+          ...a,
+          trades: a.trades.map(t => ({ ...t, date: new Date(t.date) })),
+          balanceTimeline: (a.balanceTimeline || []).map(e => ({ ...e, date: new Date(e.date) })),
+          minDate: a.minDate ? new Date(a.minDate) : null,
+          maxDate: a.maxDate ? new Date(a.maxDate) : null
+        }));
+        const m = localStorage.getItem('mt5fa_yearmode');
+        if (m) yearMode = JSON.parse(m);
+        const f = localStorage.getItem('mt5fa_yearfixed');
+        if (f) yearFixed = JSON.parse(f);
+        return accounts.length > 0;
+      } catch (e) { return false; }
+    }
+    
+    function clearStorage() {
+      localStorage.removeItem('mt5fa_accounts');
+      localStorage.removeItem('mt5fa_yearmode');
+      localStorage.removeItem('mt5fa_yearfixed');
+    }
+    
+    // ==================== DRAG & DROP ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      const dz = document.getElementById('dropZone');
+      dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('active'); });
+      dz.addEventListener('dragleave', () => dz.classList.remove('active'));
+      dz.addEventListener('drop', async e => {
+        e.preventDefault();
+        dz.classList.remove('active');
+        // Se sono trascinate cartelle/file misti, esplora ricorsivamente
+        const items = e.dataTransfer.items;
+        if (items && items.length && typeof items[0].webkitGetAsEntry === 'function') {
+          dz.innerHTML = '<div class="icon">⏳</div><p>Scansione cartelle...</p>';
+          const allFiles = [];
+          const promises = [];
+          for (let i = 0; i < items.length; i++) {
+            const entry = items[i].webkitGetAsEntry();
+            if (entry) promises.push(traverseEntry(entry, allFiles));
+          }
+          await Promise.all(promises);
+          handleFiles({ target: { files: allFiles } });
+        } else {
+          // Fallback per browser senza supporto entry API
+          handleFiles({ target: { files: e.dataTransfer.files } });
+        }
+      });
+      
+      // Restore from localStorage
+      if (loadFromStorage()) {
+        dz.innerHTML = '<div class="icon">📁</div><p>Trascina altri file o clicca</p><p class="hint">✅ ' + accounts.length + ' account ripristinati</p>';
+        document.getElementById('currencySection').style.display = 'block';
+        consolidateData(); renderResults();
+        // I cambi BCE sono in cache locale; se manca qualche anno viene scaricato ora.
+        FX.ensureYears(collectYears()).then(res => {
+          if (res.downloaded > 0) { consolidateData(); renderResults(); }
+        });
+      }
+    });
+    
+    // ==================== FOLDER TRAVERSAL ====================
+    // Esplora ricorsivamente un'entry (file o directory) usando l'API webkit
+    function traverseEntry(entry, fileList) {
+      return new Promise(resolve => {
+        if (entry.isFile) {
+          if (entry.name.match(/\.xlsx?$/i)) {
+            entry.file(file => { fileList.push(file); resolve(); }, () => resolve());
+          } else {
+            resolve();
+          }
+        } else if (entry.isDirectory) {
+          const reader = entry.createReader();
+          const allEntries = [];
+          // readEntries restituisce in batch da 100 — bisogna chiamarlo finché non ritorna []
+          const readBatch = () => {
+            reader.readEntries(async entries => {
+              if (!entries.length) {
+                // Tutto letto: processa tutte le entry trovate
+                await Promise.all(allEntries.map(e => traverseEntry(e, fileList)));
+                resolve();
+              } else {
+                allEntries.push(...entries);
+                readBatch();
+              }
+            }, () => resolve());
+          };
+          readBatch();
+        } else {
+          resolve();
+        }
+      });
+    }
+    
+    // ==================== FILE HANDLING ====================
+    async function handleFiles(event) {
+      const allFiles = Array.from(event.target.files);
+      // Filtra solo gli xlsx (anche da cartelle che contengono altro)
+      const files = allFiles.filter(f => f.name.match(/\.xlsx?$/i));
+      const dz = document.getElementById('dropZone');
+      
+      if (files.length === 0) {
+        dz.innerHTML = '<div class="icon">⚠️</div><p>Nessun file .xlsx trovato</p><p class="hint">' + (allFiles.length > 0 ? `${allFiles.length} file scansionati ma nessun Excel valido` : 'Trascina file o cartelle MT5') + '</p>';
+        return;
+      }
+      
+      dz.innerHTML = `<div class="icon">⏳</div><p>Elaborazione ${files.length} file...</p>`;
+      
+      let processed = 0, errors = 0, duplicati = 0;
+      const errorList = [];
+      const sovrapposti = new Set();
+      for (const file of files) {
+        try {
+          const acc = await processFile(file);
+          const sig = accountSignature(acc);
+          // Stesso conto, stesso periodo, stessi trade: e' lo stesso report ricaricato.
+          // Senza questo controllo bastava ritrascinare la cartella per raddoppiare
+          // profitti e imposte.
+          if (accounts.some(a => accountSignature(a) === sig)) { duplicati++; continue; }
+          // Stesso conto ma periodo diverso: possibile sovrapposizione di report.
+          if (acc.accountNumber && accounts.some(a => a.accountNumber === acc.accountNumber)) {
+            sovrapposti.add(acc.accountNumber);
+          }
+          accounts.push(acc);
+          processed++;
+        } catch (e) {
+          errors++;
+          errorList.push(`${file.name}: ${e.message || e}`);
+          console.error('Errore:', file.name, e);
+        }
+      }
+      
+      if (accounts.length > 0) {
+        // Una sola richiesta per anno copre TUTTE le date di quell'anno
+        // (serie storica BCE completa), comprese quelle dei saldi.
+        const years = collectYears();
+        dz.innerHTML = '<div class="icon">💱</div><p>Scaricamento cambi BCE...</p>';
+        const fx = await FX.ensureYears(years, (done, tot, y) => {
+          dz.innerHTML = `<div class="icon">💱</div><p>Scaricamento cambi BCE ${y} (${done + 1}/${tot})...</p>`;
+        });
+
+        const errorMsg = errors > 0 ? ` <span style="color:#fbbf24">(${errors} errori)</span>` : '';
+        const dupMsg = duplicati > 0 ? ` <span style="color:#fbbf24">• ${duplicati} file già caricati, ignorati</span>` : '';
+        dz.innerHTML = `<div class="icon">📁</div><p>Trascina altri file o clicca</p><p class="hint">✅ ${accounts.length} account caricati • ${FX.coverage().observations} rilevazioni BCE${errorMsg}${dupMsg}</p>`;
+        if (errors > 0) console.warn('File con errori:', errorList);
+        if (duplicati > 0) showStatus(`ℹ️ ${duplicati} report erano già caricati (stesso conto, stesso periodo, stessi trade): ignorati per non contarli due volte.`);
+        if (sovrapposti.size > 0) showStatus(`⚠️ Attenzione: per il conto ${Array.from(sovrapposti).join(', ')} hai caricato più report con periodi diversi. Se i periodi si sovrappongono, alcuni trade vengono contati due volte: usa un solo report che copra tutto il periodo.`, true);
+        document.getElementById('currencySection').style.display = 'block';
+        consolidateData(); renderResults(); saveToStorage();
+      } else {
+        dz.innerHTML = '<div class="icon">📊</div><p>Trascina qui i report MT5 (.xlsx) o un\'intera cartella</p><p class="hint">💡 MT5 → Toolbox → Cronologia → Tasto destro → Report → Excel</p>';
+      }
+    }
+    
+    // Firma di un report: stesso conto + stesso periodo + stessi trade = stesso file.
+    function accountSignature(a) {
+      const n = (a.trades || []).length;
+      const min = a.minDate ? FX.toISO(a.minDate) : '-';
+      const max = a.maxDate ? FX.toISO(a.maxDate) : '-';
+      return [a.accountNumber, n, min, max, (a.netProfit || 0).toFixed(2), (a.valoreFinale || 0).toFixed(2)].join('|');
+    }
+
+    function collectYears() {
+      const years = new Set();
+      accounts.forEach(a => {
+        a.trades.forEach(t => years.add(t.date.getFullYear()));
+        (a.balanceTimeline || []).forEach(e => years.add(e.date.getFullYear()));
+      });
+      return Array.from(years);
+    }
+
+    // ==================== PROCESS MT5 FILE ====================
+    async function processFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          try {
+            const wb = XLSX.read(e.target.result, { type: 'array' });
+            const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            
+            // Account info
+            let accountName = '', accountNumber = '', company = '', currency = 'USD', serverName = '';
+            for (let i = 0; i < 15; i++) {
+              const row = data[i] || [];
+              const c0 = String(row[0] || ''), c3 = String(row[3] || '');
+              if (c0 === 'Name:') accountName = c3;
+              if (c0 === 'Account:') {
+                const m = c3.match(/(\d+)/); if (m) accountNumber = m[1];
+                if (c3.includes('(EUR')) currency = 'EUR';
+                else if (c3.includes('(USD')) currency = 'USD';
+                // Estrai nome server da "(EUR, ICMarketsSC-MT5-2, real, Hedge)"
+                const srv = c3.match(/,\s*([A-Za-z][\w-]+),/);
+                if (srv) serverName = srv[1];
+              }
+              if (c0 === 'Company:') company = c3;
+            }
+            
+            // Broker country: prima cerca su Company, poi su ServerName
+            // (es. "Raw Trading Ltd" + server "ICMarketsSC" → IC Markets Seychelles)
+            const cl = company.toLowerCase();
+            const sl = serverName.toLowerCase();
+            const combined = (cl + ' ' + sl).toLowerCase();
+            let countryInfo = brokerCountries.default;
+            // Cerca match più lungo prima (es. "vantage international" > "vantage")
+            const sortedKeys = Object.keys(brokerCountries)
+              .filter(k => k !== 'default')
+              .sort((a, b) => b.length - a.length);
+            for (const b of sortedKeys) {
+              if (combined.includes(b)) { countryInfo = brokerCountries[b]; break; }
+            }
+            
+            // Etichetta visualizzata: nome commerciale + entità giuridica (se diverse)
+            let displayCompany = countryInfo.displayName || company;
+            if (company && countryInfo.displayName && !displayCompany.toLowerCase().includes(company.toLowerCase().split(' ')[0])) {
+              displayCompany = `${countryInfo.displayName}`;
+            }
+            
+            // Parse Positions (completed trades)
+            let posStart = -1;
+            for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Positions') { posStart = i + 2; break; } }
+            
+            const trades = [];
+            let grossProfit = 0, grossLoss = 0, wins = 0, losses = 0;
+            let valoreIniziale = 0, valoreFinale = 0;
+            
+            if (posStart !== -1) {
+              for (let i = posStart; i < data.length; i++) {
+                const row = data[i];
+                let dateStr = row[0];
+                let tradeDate;
+                if (dateStr instanceof Date) { tradeDate = dateStr; }
+                else {
+                  dateStr = String(dateStr || '');
+                  if (!dateStr.match(/^\d{4}[\.\-]/)) {
+                    if (row[0] && ['Deals','Orders','Working Orders','Results'].includes(String(row[0]))) break;
+                    continue;
+                  }
+                  tradeDate = new Date(dateStr.replace(/\./g, '-'));
+                }
+                if (!tradeDate || isNaN(tradeDate.getTime())) continue;
+                try {
+                  const profit = parseFloat(row[12]) || 0;
+                  const symbol = String(row[2] || '');
+                  const type = String(row[3] || '').toLowerCase();
+                  if (symbol && (type === 'buy' || type === 'sell')) {
+                    trades.push({ date: tradeDate, profit, symbol, volume: parseFloat(String(row[4]).replace(',','.')) || 0 });
+                    if (profit > 0) { grossProfit += profit; wins++; }
+                    else if (profit < 0) { grossLoss += profit; losses++; }
+                  }
+                } catch (e) {}
+              }
+            }
+            
+            // Fallback: parse Deals if no Positions
+            if (trades.length === 0) {
+              let ds = -1;
+              for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Deals') { ds = i + 2; break; } }
+              if (ds !== -1) {
+                for (let i = ds; i < data.length; i++) {
+                  const row = data[i];
+                  let dv = row[0], td;
+                  if (dv instanceof Date) { td = dv; }
+                  else {
+                    const s = String(dv || '');
+                    if (!s.match(/^\d{4}[\.\-]/)) { if (row[0] && ['Orders','Positions','Working Orders'].includes(String(row[0]))) break; continue; }
+                    td = new Date(s.replace(/\./g, '-'));
+                  }
+                  if (!td || isNaN(td.getTime())) continue;
+                  try {
+                    const p = parseFloat(row[11]) || 0;
+                    const t = String(row[3] || '').toLowerCase();
+                    const d = String(row[4] || '').toLowerCase();
+                    const sym = String(row[2] || '');
+                    if (sym && (t === 'buy' || t === 'sell') && d === 'out') {
+                      trades.push({ date: td, profit: p, symbol: sym, volume: parseFloat(row[5]) || 0 });
+                      if (p > 0) { grossProfit += p; wins++; } else if (p < 0) { grossLoss += p; losses++; }
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+            
+            // Build balance timeline from Deals (only balance/credit rows + first/last deal)
+            let dealsStart = -1;
+            for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Deals') { dealsStart = i + 2; break; } }
+            
+            const balanceTimeline = [];
+            let totalDeposits = 0, totalWithdrawals = 0, totalBonusCredits = 0;
+            let totalInternalIn = 0, totalInternalOut = 0, totalPnlAdj = 0;
+            let firstDealEntry = null, lastDealEntry = null;
+            
+            // Classifica un movimento balance dalle parole nel commento
+            // - 'transfer' (in/out, from/to), 'autotrf', 'tfr' → trasferimento INTERNO tra conti dello stesso titolare
+            // - 'cc deposit', 'dep ', 'deposit', 'wire in', 'pay in' → deposito REALE da banca
+            // - 'wdl', 'withdrawal', 'wire out', 'pay out' → prelievo REALE verso banca
+            // - 'swap', 'pnl', 'rollover', 'adjustment', 'correction' → aggiustamento P&L (non è movimento di cassa)
+            function classifyBalanceComment(commentLower, amount) {
+                const c = commentLower;
+                
+                // 1. Aggiustamenti P&L (non sono movimenti veri)
+                if (/\b(swap|pnl|rollover|adjust|correct|interest)\b/.test(c)) {
+                    return 'pnl_adj';
+                }
+                
+                // 2. Trasferimenti interni (anche se positivi/negativi non sono cassa)
+                // Pattern: "Autotrf", "Transfer In/Out", "Transfer from/to", "TFR"
+                if (/\b(autotrf|transfer\s+(in|out|from|to)|tfr|internal)\b/.test(c)) {
+                    return amount >= 0 ? 'internal_in' : 'internal_out';
+                }
+                
+                // 3. Depositi reali (verso il conto dalla banca/carta)
+                if (/\b(cc\s+deposit|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2})\b/.test(c)) {
+                    return 'real_deposit';
+                }
+                
+                // 4. Prelievi reali (dal conto verso banca)
+                if (/\b(wdl|withdrawal|wire\s+out|pay\s+out|withdraw)\b/.test(c)) {
+                    return 'real_withdrawal';
+                }
+                
+                // 5. Default basato sul segno (fallback)
+                return amount >= 0 ? 'real_deposit' : 'real_withdrawal';
+            }
+            
+            if (dealsStart !== -1) {
+              for (let i = dealsStart; i < data.length; i++) {
+                const row = data[i];
+                const type = String(row[3] || '').toLowerCase();
+                const balance = parseFloat(row[12]);
+                const amount = parseFloat(row[11]) || 0;
+                const commentRaw = String(row[13] || '');
+                const comment = commentRaw.toLowerCase();
+                
+                if (row[0] && ['Working Orders','Orders','Results'].includes(String(row[0]))) break;
+                
+                let entryDate;
+                if (row[0] instanceof Date) { entryDate = row[0]; }
+                else {
+                  const ds = String(row[0] || '');
+                  if (!ds.match(/^\d{4}[\.\-]/)) continue;
+                  entryDate = new Date(ds.replace(/\./g, '-'));
+                }
+                if (!entryDate || isNaN(entryDate.getTime())) continue;
+                if (isNaN(balance)) continue;
+                
+                const entry = { date: entryDate, balance, amount, type, comment: commentRaw };
+                if (!firstDealEntry) firstDealEntry = entry;
+                lastDealEntry = entry;
+                
+                const isCredit = type === 'credit';
+                const isBalanceOp = type === 'balance';
+                if (!isCredit && !isBalanceOp) continue;
+                
+                let category = 'unclassified';
+                if (isCredit) {
+                    category = 'bonus';
+                } else if (isBalanceOp) {
+                    category = classifyBalanceComment(comment, amount);
+                }
+                
+                // Aggiorna i contatori in base alla categoria
+                switch (category) {
+                    case 'bonus':            totalBonusCredits += amount; break;
+                    case 'real_deposit':     totalDeposits += amount; break;
+                    case 'real_withdrawal':  totalWithdrawals += Math.abs(amount); break;
+                    case 'internal_in':      totalInternalIn += amount; break;
+                    case 'internal_out':     totalInternalOut += Math.abs(amount); break;
+                    case 'pnl_adj':          totalPnlAdj += amount; break;
+                }
+                
+                entry.category = category;
+                entry.isCredit = isCredit;
+                entry.isDeposit = (category === 'real_deposit');
+                entry.isWithdrawal = (category === 'real_withdrawal');
+                entry.isInternalIn = (category === 'internal_in');
+                entry.isInternalOut = (category === 'internal_out');
+                entry.isSwapAdj = (category === 'pnl_adj');
+                balanceTimeline.push(entry);
+              }
+            }
+            
+            // ============ CALCOLO VALORE INIZIALE/FINALE PER QUADRO RW ============
+            // Logica: il "valore iniziale" è il primo afflusso di denaro nel conto durante l'anno
+            //         (inclusi i trasferimenti interni perché sono comunque saldo monitorabile);
+            //         il "valore finale" è il saldo MT5 più recente.
+            // Bonus/credit sono SEMPRE esclusi (non prelevabili → no monitoraggio fiscale).
+            if (balanceTimeline.length > 0) {
+              // Primo movimento "monetario" reale (deposito o trasferimento interno)
+              const firstMonetary = balanceTimeline.find(e =>
+                e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut
+              );
+              if (firstMonetary) {
+                // Valore iniziale = saldo PRIMA di questo primo movimento (escluso bonus)
+                valoreIniziale = Math.max(0, (firstMonetary.balance - firstMonetary.amount) - totalBonusCredits);
+                // Se il primo movimento è il primo della timeline, allora il saldo iniziale è 0 (conto nuovo)
+                // perché entryBalance già include il movimento
+                if (firstMonetary === balanceTimeline[0] && firstMonetary.amount > 0 &&
+                    Math.abs(firstMonetary.balance - firstMonetary.amount) < 0.01) {
+                  valoreIniziale = 0;
+                }
+              } else if (firstDealEntry) {
+                valoreIniziale = Math.max(0, (firstDealEntry.balance - (firstDealEntry.amount || 0)) - totalBonusCredits);
+              }
+              const lastTL = balanceTimeline[balanceTimeline.length - 1];
+              const lastTLDate = lastTL.date.getTime();
+              const lastDealDate = lastDealEntry ? lastDealEntry.date.getTime() : 0;
+              if (lastDealDate > lastTLDate && lastDealEntry) {
+                valoreFinale = Math.max(0, lastDealEntry.balance - totalBonusCredits);
+              } else {
+                valoreFinale = Math.max(0, lastTL.balance - totalBonusCredits);
+              }
+            } else if (firstDealEntry) {
+              valoreIniziale = Math.max(0, (firstDealEntry.balance - (firstDealEntry.amount || 0)) - totalBonusCredits);
+              valoreFinale = lastDealEntry ? Math.max(0, lastDealEntry.balance - totalBonusCredits) : valoreIniziale;
+            }
+            
+            // Add first/last deal to timeline for date range
+            if (firstDealEntry && (balanceTimeline.length === 0 || balanceTimeline[0].date.getTime() > firstDealEntry.date.getTime())) {
+              balanceTimeline.unshift({ ...firstDealEntry, category: 'trade_marker', isCredit: false, isDeposit: false, isWithdrawal: false, isInternalIn: false, isInternalOut: false, isSwapAdj: false });
+            }
+            if (lastDealEntry && (balanceTimeline.length === 0 || balanceTimeline[balanceTimeline.length-1].date.getTime() < lastDealEntry.date.getTime())) {
+              balanceTimeline.push({ ...lastDealEntry, category: 'trade_marker', isCredit: false, isDeposit: false, isWithdrawal: false, isInternalIn: false, isInternalOut: false, isSwapAdj: false });
+            }
+            
+            resolve({
+              accountName, accountNumber, company, displayCompany, serverName, currency, countryInfo,
+              trades, grossProfit, grossLoss, netProfit: grossProfit + grossLoss,
+              wins, losses, valoreIniziale, valoreFinale,
+              balanceTimeline, totalDeposits, totalWithdrawals, totalBonusCredits,
+              totalInternalIn, totalInternalOut, totalPnlAdj,
+              minDate: trades.length > 0 ? trades[0].date : null,
+              maxDate: trades.length > 0 ? trades[trades.length-1].date : null,
+              fileName: file.name
+            });
+          } catch (e) { reject(e); }
+        };
+        reader.onerror = () => reject(new Error('Read error'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+    
+    // ==================== CONSOLIDATE PER YEAR ====================
+    function consolidateData() {
+      yearlyData = {};
+      fxStats = { bce: 0, prec: 0, manuale: 0, mancanti: 0, usdNonConvertiti: 0 };
+      const yearsFound = new Set();
+      
+      accounts.forEach(acc => {
+        const timeline = acc.balanceTimeline || [];
+        const bonus = acc.totalBonusCredits || 0;
+        
+        // Da trades: aggrega per anno con cambi storici per ogni trade
+        acc.trades.forEach(trade => {
+          const year = trade.date.getFullYear();
+          yearsFound.add(year);
+          if (!yearlyData[year]) yearlyData[year] = { accounts: {}, totals: { trades:0, wins:0, losses:0, grossProfit:0, grossLoss:0, netProfit:0, valoreIniziale:0, valoreFinale:0, ivafe:0 } };
+          
+          const key = acc.accountNumber;
+          if (!yearlyData[year].accounts[key]) {
+            yearlyData[year].accounts[key] = createYearAccount(acc, year, timeline, bonus, yearsFound);
+          }
+          
+          const ya = yearlyData[year].accounts[key];
+          ya.trades++;
+          // Profitto in valuta originale del conto
+          if (trade.profit > 0) { ya.grossProfit += trade.profit; ya.wins++; }
+          else { ya.grossLoss += trade.profit; ya.losses++; }
+          ya.netProfit = ya.grossProfit + ya.grossLoss;
+          
+          // Profitto in EUR convertito al cambio del giorno del trade (cumula)
+          const profitEurAtDate = toEur(trade.profit, acc.currency, trade.date, year);
+          if (trade.profit > 0) ya.grossProfitEUR_acc += profitEurAtDate;
+          else ya.grossLossEUR_acc += profitEurAtDate;
+          ya.netProfitEUR_acc = ya.grossProfitEUR_acc + ya.grossLossEUR_acc;
+        });
+        
+        // Da timeline (anni con depositi/movimenti ma senza trade)
+        const tlYears = new Set();
+        timeline.forEach(e => tlYears.add(e.date.getFullYear()));
+        tlYears.forEach(year => {
+          yearsFound.add(year);
+          const key = acc.accountNumber;
+          if (!yearlyData[year]) yearlyData[year] = { accounts: {}, totals: { trades:0, wins:0, losses:0, grossProfit:0, grossLoss:0, netProfit:0, valoreIniziale:0, valoreFinale:0, ivafe:0 } };
+          if (yearlyData[year].accounts[key]) return;
+          yearlyData[year].accounts[key] = createYearAccount(acc, year, timeline, bonus, yearsFound);
+        });
+      });
+      
+      // Per ogni account, calcola movimentazioni in EUR usando cambi storici giornalieri
+      Object.keys(yearlyData).forEach(year => {
+        const d = yearlyData[year];
+        d.totals = { trades:0, wins:0, losses:0, grossProfit:0, grossLoss:0, netProfit:0, valoreIniziale:0, valoreFinale:0, ivafe:0 };
+        Object.values(d.accounts).forEach(a => {
+          // Cambio rappresentativo dell'anno: serve solo per le voci non databili
+          // (bonus/credit cumulato). Tutto il resto usa il cambio della sua data.
+          const yr = a.currency === 'USD' ? yearRate(year) : { rate: 1, source: 'EUR', refDate: year };
+          a.yearRate = yr.rate;
+          a.yearRateLabel = a.currency === 'USD'
+            ? (yr.rate != null ? FX.sourceLabel(yr.source, yr.refDate) : 'non disponibile')
+            : '—';
+
+          // Profitti/perdite: somma dei singoli trade gia' convertiti al cambio
+          // del loro giorno (accumulati nel loop dei trade).
+          if (a.currency === 'EUR') {
+            a.grossProfitEUR = a.grossProfit;
+            a.grossLossEUR = a.grossLoss;
+            a.netProfitEUR = a.netProfit;
+          } else {
+            a.grossProfitEUR = a.grossProfitEUR_acc;
+            a.grossLossEUR = a.grossLossEUR_acc;
+            a.netProfitEUR = a.grossProfitEUR + a.grossLossEUR;
+          }
+
+          // Saldi: convertiti al cambio della data a cui il saldo si riferisce
+          // (1 gennaio o prima operazione; 31 dicembre o data di chiusura).
+          if (a.currency === 'EUR') {
+            a.valoreInizialeEUR = a.valoreIniziale;
+            a.valoreFinaleEUR = a.valoreFinale;
+          } else {
+            const dIni = a.valoreInizialeDate || new Date(parseInt(year), 0, 1);
+            const dFin = a.valoreFinaleDate || new Date(parseInt(year), 11, 31);
+            a.valoreInizialeEUR = usdToEur(a.valoreIniziale, dIni, year);
+            a.valoreFinaleEUR = usdToEur(a.valoreFinale, dFin, year);
+          }
+          
+          // Movimentazioni: somma in EUR usando il cambio del giorno per ogni evento
+          if (a.currency === 'EUR') {
+            a.yearDepositsEUR = a.yearDeposits;
+            a.yearWithdrawalsEUR = a.yearWithdrawals;
+            a.yearInternalInEUR = a.yearInternalIn;
+            a.yearInternalOutEUR = a.yearInternalOut;
+          } else {
+            a.yearDepositsEUR = (a.depositEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year), 0);
+            a.yearWithdrawalsEUR = (a.withdrawalEvents || []).reduce((s,e) => s + usdToEur(Math.abs(e.amount), e.date, year), 0);
+            a.yearInternalInEUR = (a.internalInEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year), 0);
+            a.yearInternalOutEUR = (a.internalOutEvents || []).reduce((s,e) => s + usdToEur(Math.abs(e.amount), e.date, year), 0);
+          }
+          
+          // IVAFE: 0,2% sul valore medio annuo proporzionato ai giorni
+          const medio = (a.valoreInizialeEUR + a.valoreFinaleEUR) / 2;
+          a.ivafe = medio * 0.002 * (a.giorni / 365);
+          
+          d.totals.trades += a.trades; d.totals.wins += a.wins; d.totals.losses += a.losses;
+          d.totals.grossProfit += a.grossProfitEUR; d.totals.grossLoss += a.grossLossEUR;
+          d.totals.netProfit += a.netProfitEUR;
+          d.totals.valoreIniziale += a.valoreInizialeEUR; d.totals.valoreFinale += a.valoreFinaleEUR;
+          d.totals.ivafe += a.ivafe;
+        });
+      });
+      
+      renderExchangeRates(yearsFound);
+    }
+    
+    function createYearAccount(acc, year, timeline, bonus, yearsFound) {
+      const ys = new Date(year, 0, 1);
+      const ye = new Date(year, 11, 31, 23, 59, 59);
+      const beforeYear = timeline.filter(e => e.date < ys);
+      let valIni = 0;
+      
+      if (beforeYear.length > 0) {
+        // Conto già esistente prima dell'anno: prendi l'ultimo saldo dell'anno precedente
+        valIni = Math.max(0, beforeYear[beforeYear.length-1].balance - bonus);
+      } else {
+        // Conto NUOVO nell'anno: il valore iniziale è 0 (come da norma RW)
+        // Il primo movimento monetario (deposito o trasferimento interno) farà partire la giacenza
+        const firstMonetary = timeline.find(e =>
+          e.date >= ys && e.date <= ye &&
+          (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut)
+        );
+        if (firstMonetary) {
+          // Il valore iniziale è il saldo PRIMA di questo primo movimento
+          valIni = Math.max(0, (firstMonetary.balance - firstMonetary.amount) - bonus);
+        } else {
+          // Nessun movimento balance: usa il primo evento (probabilmente trade) e desumi
+          const fe = timeline.find(e => e.date >= ys && e.date <= ye);
+          if (fe) valIni = Math.max(0, (fe.balance - (fe.amount || 0)) - bonus);
+        }
+      }
+      
+      const untilEnd = timeline.filter(e => e.date <= ye);
+      let valFin = 0;
+      if (untilEnd.length > 0) valFin = Math.max(0, untilEnd[untilEnd.length-1].balance - bonus);
+      
+      // Giorni reali di operatività durante l'anno
+      // Logica:
+      //   - Se il conto ESISTEVA già a inizio anno (beforeYear non vuoto) → giorni partono dal 1° gennaio
+      //   - Se il conto è NUOVO nell'anno → giorni partono dalla prima operazione
+      //   - Se il conto si CHIUDE durante l'anno (saldo finale ≈ 0) → giorni terminano alla data di chiusura
+      //   - Altrimenti → giorni terminano al 31 dicembre
+      const firstMonetaryTY = timeline.find(e =>
+        e.date >= ys && e.date <= ye &&
+        (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut)
+      );
+      const fdTY = firstMonetaryTY || timeline.find(e => e.date >= ys && e.date <= ye && e.isDeposit);
+      const feTY = timeline.find(e => e.date >= ys && e.date <= ye);
+      const endM = new Date(year, 11, 31);
+      
+      // Determina la data di inizio
+      let startDate;
+      if (beforeYear.length > 0) {
+        // Conto pre-esistente: parte dal 1° gennaio dell'anno
+        startDate = ys;
+      } else if (fdTY || feTY) {
+        // Conto nuovo: parte dalla prima operazione dell'anno
+        const ref = fdTY || feTY;
+        startDate = new Date(ref.date.getFullYear(), ref.date.getMonth(), ref.date.getDate());
+      } else {
+        // Nessuna operazione nell'anno: il conto non ha movimenti = 0 giorni
+        startDate = null;
+      }
+      
+      // Determina la data di fine
+      let endDate = endM;
+      const lastTY = [...timeline].reverse().find(e => e.date >= ys && e.date <= ye);
+      if (lastTY && (lastTY.balance - bonus) <= 0.50) {
+        // Conto chiuso o svuotato: termina alla data dell'ultima operazione
+        endDate = new Date(lastTY.date.getFullYear(), lastTY.date.getMonth(), lastTY.date.getDate());
+      }
+      
+      let giorni = 0;
+      if (startDate) {
+        giorni = Math.round((endDate - startDate) / 86400000) + 1;
+        // Sicurezza: minimo 1 giorno se ci sono state operazioni
+        if (giorni < 1 && (fdTY || feTY)) giorni = 1;
+        // Massimo 365 (366 in bisestile) — non vanno oltre l'anno
+        if (giorni > 366) giorni = 366;
+      }
+      
+      // Calcola anche le date a cui riferire il cambio per saldi iniziali/finali
+      // Inizio: prima operazione monetaria nell'anno (per conti nuovi) o 1° gennaio (per pre-esistenti)
+      // Fine: ultima operazione (per conti chiusi) o 31 dicembre (per conti ancora attivi)
+      let valoreInizialeDate = null, valoreFinaleDate = null;
+      if (beforeYear.length > 0) {
+        valoreInizialeDate = ys; // 1 gennaio
+      } else {
+        const firstMonetary = timeline.find(e => e.date >= ys && e.date <= ye &&
+          (e.isDeposit || e.isInternalIn || e.isWithdrawal || e.isInternalOut));
+        if (firstMonetary) valoreInizialeDate = firstMonetary.date;
+      }
+      const lastTYevent = [...timeline].reverse().find(e => e.date >= ys && e.date <= ye);
+      if (lastTYevent && (lastTYevent.balance - bonus) <= 0.50) {
+        valoreFinaleDate = lastTYevent.date; // conto chiuso
+      } else {
+        valoreFinaleDate = ye; // 31 dicembre
+      }
+      
+      return {
+        accountName: acc.accountName, accountNumber: acc.accountNumber,
+        company: acc.company, displayCompany: acc.displayCompany || acc.company,
+        serverName: acc.serverName || '',
+        currency: acc.currency, countryInfo: acc.countryInfo,
+        trades: 0, wins: 0, losses: 0, grossProfit: 0, grossLoss: 0, netProfit: 0,
+        // Accumulatori EUR a cambi storici (popolati nel loop trades di consolidateData)
+        grossProfitEUR_acc: 0, grossLossEUR_acc: 0, netProfitEUR_acc: 0,
+        valoreIniziale: valIni, valoreFinale: valFin, giorni,
+        valoreInizialeDate, valoreFinaleDate,
+        ivafe: 0,
+        yearDeposits: timeline.filter(e => e.date >= ys && e.date <= ye && e.isDeposit).reduce((s,e) => s + e.amount, 0),
+        yearWithdrawals: timeline.filter(e => e.date >= ys && e.date <= ye && e.isWithdrawal).reduce((s,e) => s + Math.abs(e.amount), 0),
+        yearInternalIn: timeline.filter(e => e.date >= ys && e.date <= ye && e.isInternalIn).reduce((s,e) => s + e.amount, 0),
+        yearInternalOut: timeline.filter(e => e.date >= ys && e.date <= ye && e.isInternalOut).reduce((s,e) => s + Math.abs(e.amount), 0),
+        // Liste di eventi per calcoli storici
+        depositEvents: timeline.filter(e => e.date >= ys && e.date <= ye && e.isDeposit),
+        withdrawalEvents: timeline.filter(e => e.date >= ys && e.date <= ye && e.isWithdrawal),
+        internalInEvents: timeline.filter(e => e.date >= ys && e.date <= ye && e.isInternalIn),
+        internalOutEvents: timeline.filter(e => e.date >= ys && e.date <= ye && e.isInternalOut),
+        totalBonusCredits: bonus
+      };
+    }
+    
+    // ==================== RENDER RESULTS ====================
+    function renderResults() {
+      document.getElementById('resultsSection').style.display = 'block';
+      
+      let totalTrades = 0, totalProfit = 0, totalIVAFE = 0, totalRT = 0;
+      Object.values(yearlyData).forEach(d => {
+        totalTrades += d.totals.trades; totalProfit += d.totals.netProfit;
+        totalIVAFE += d.totals.ivafe;
+        if (d.totals.netProfit > 0) totalRT += d.totals.netProfit * 0.26;
+      });
+      
+      document.getElementById('totalStats').innerHTML = `
+        <div class="stat-card"><div class="stat-number text-accent">${accounts.length}</div><div class="stat-label">Account</div></div>
+        <div class="stat-card"><div class="stat-number text-accent">${totalTrades}</div><div class="stat-label">Trade</div></div>
+        <div class="stat-card"><div class="stat-number ${totalProfit >= 0 ? 'text-green' : 'text-red'}">€${totalProfit.toFixed(0)}</div><div class="stat-label">Profitto Netto</div></div>
+        <div class="stat-card"><div class="stat-number text-red">€${totalRT.toFixed(0)}</div><div class="stat-label">Imposta RT 26%</div></div>
+        <div class="stat-card"><div class="stat-number text-gold">€${totalIVAFE.toFixed(0)}</div><div class="stat-label">IVAFE 0.2%</div></div>
+        <div class="stat-card"><div class="stat-number text-purple">€${(totalRT + totalIVAFE).toFixed(0)}</div><div class="stat-label">Totale Imposte</div></div>
+      `;
+      
+      const yc = document.getElementById('yearlyResults');
+      yc.innerHTML = '';
+      
+      Object.keys(yearlyData).sort().forEach(year => {
+        const d = yearlyData[year];
+        const t = d.totals;
+        const rt = t.netProfit > 0 ? t.netProfit * 0.26 : 0;
+        
+        let accHTML = '';
+        Object.values(d.accounts).forEach(a => {
+          const imp = a.netProfitEUR > 0 ? a.netProfitEUR * 0.26 : 0;
+          const bonusEur = (a.yearRate != null ? a.totalBonusCredits * a.yearRate : 0);
+          const bonusTag = a.totalBonusCredits > 0 ? `<div class="account-stat"><div class="label">Bonus escluso</div><div class="value text-gold">€${bonusEur.toFixed(2)}</div></div>` : '';
+          const depTag = (a.yearDepositsEUR || 0) > 0 ? `<div class="account-stat"><div class="label">Depositi reali</div><div class="value text-green">€${a.yearDepositsEUR.toFixed(0)}</div></div>` : '';
+          const wdTag = (a.yearWithdrawalsEUR || 0) > 0 ? `<div class="account-stat"><div class="label">Prelievi reali</div><div class="value text-red">€${a.yearWithdrawalsEUR.toFixed(0)}</div></div>` : '';
+          const intInTag = (a.yearInternalInEUR || 0) > 0 ? `<div class="account-stat"><div class="label">Trasf. IN</div><div class="value" style="color:#60a5fa">€${a.yearInternalInEUR.toFixed(0)}</div></div>` : '';
+          const intOutTag = (a.yearInternalOutEUR || 0) > 0 ? `<div class="account-stat"><div class="label">Trasf. OUT</div><div class="value" style="color:#a78bfa">€${a.yearInternalOutEUR.toFixed(0)}</div></div>` : '';
+          
+          // Badge sotto il nome broker, non accanto (evita overflow su layout stretto)
+          const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
+          const onlyBalance = a.trades === 0 && (a.valoreInizialeEUR > 0 || a.valoreFinaleEUR > 0);
+          let badges = '';
+          if (isBlackListYear) badges += `<span style="display:inline-block;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#f87171;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:600;margin:2px 2px 0 0;white-space:nowrap;">⚠️ BLACK LIST</span>`;
+          if (onlyBalance) badges += `<span style="display:inline-block;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:#fbbf24;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:600;margin:2px 2px 0 0;white-space:nowrap;">📌 SOLO RW</span>`;
+          const badgeRow = badges ? `<div style="margin-top:4px;line-height:1;">${badges}</div>` : '';
+          
+          // Nome broker completo, senza troncamento (il layout span:2 ha spazio sufficiente)
+          const brokerLabel = a.displayCompany || a.company;
+          
+          accHTML += `<div class="account-row">
+            <div class="account-stat"><div class="label">Account</div><div class="value">${a.accountNumber}</div></div>
+            <div class="account-stat" style="grid-column:span 2;text-align:left;"><div class="label">Broker</div><div class="value" style="font-size:11px;line-height:1.3;">${brokerLabel}</div>${badgeRow}</div>
+            <div class="account-stat"><div class="label">Paese</div><div class="value" style="font-size:11px;">${a.countryInfo.name}</div></div>
+            <div class="account-stat"><div class="label">Valuta</div><div class="value">${a.currency}</div></div>
+            <div class="account-stat"><div class="label">Trade</div><div class="value">${a.trades}</div></div>
+            <div class="account-stat"><div class="label">Profitto</div><div class="value ${a.netProfitEUR >= 0 ? 'profit' : 'loss'}">€${a.netProfitEUR.toFixed(2)}</div></div>
+            <div class="account-stat"><div class="label">RT 26%</div><div class="value loss">€${imp.toFixed(2)}</div></div>
+            <div class="account-stat"><div class="label">Val.Ini/Fin</div><div class="value" style="font-size:11px;">${a.valoreInizialeEUR.toFixed(2)} → ${a.valoreFinaleEUR.toFixed(2)}</div></div>
+            <div class="account-stat"><div class="label">Giorni</div><div class="value">${a.giorni}</div></div>
+            <div class="account-stat"><div class="label">IVAFE</div><div class="value text-gold">€${a.ivafe.toFixed(2)}</div></div>
+            ${depTag}${wdTag}${intInTag}${intOutTag}${bonusTag}
+          </div>`;
+        });
+        
+        yc.innerHTML += `<div class="year-card">
+          <div class="year-header">
+            <div class="year-badge">${year}</div>
+            <div class="btn-group">
+              <button class="btn btn-secondary" onclick="genRT(${year})">📄 Quadro RT</button>
+              <button class="btn btn-secondary" onclick="genRW(${year})">📄 Quadro RW</button>
+            </div>
+          </div>
+          ${accHTML}
+          <div class="info-box">
+            <strong>Riepilogo ${year}:</strong> ${t.trades} trade | Profitto: €${t.netProfit.toFixed(2)} | RT: €${rt.toFixed(2)} | IVAFE: €${t.ivafe.toFixed(2)} | <strong>Totale: €${(rt + t.ivafe).toFixed(2)}</strong>
+          </div>
+        </div>`;
+      });
+      renderCharts();
+    }
+
+    // ==================== GRAFICI ====================
+    let _fxCharts = [];
+    function renderCharts(){
+      _fxCharts.forEach(c=>{ try{ c.destroy(); }catch(e){} });
+      _fxCharts = [];
+      if(typeof Chart === 'undefined') return;
+      Chart.defaults.color = '#94a3b8';
+      Chart.defaults.borderColor = 'rgba(148,163,184,0.18)';
+      const G='#22c55e', R='#ef4444', GD='#eab308';
+      const palette=['#3b82f6','#22c55e','#eab308','#a78bfa','#ef4444','#06b6d4','#f97316','#ec4899'];
+      const years = Object.keys(yearlyData).sort();
+
+      // 1) Profitto netto per anno
+      const profY = years.map(y=>yearlyData[y].totals.netProfit);
+      _fxCharts.push(new Chart(document.getElementById('chYear'), {
+        type:'bar',
+        data:{labels:years, datasets:[{data:profY, backgroundColor:profY.map(v=>v>=0?G:R)}]},
+        options:{maintainAspectRatio:false, plugins:{legend:{display:false}}}
+      }));
+
+      // 2) Imposte per anno (RT + IVAFE)
+      const rtY = years.map(y=> yearlyData[y].totals.netProfit>0 ? yearlyData[y].totals.netProfit*0.26 : 0);
+      const ivY = years.map(y=> yearlyData[y].totals.ivafe);
+      _fxCharts.push(new Chart(document.getElementById('chTax'), {
+        type:'bar',
+        data:{labels:years, datasets:[
+          {label:'RT 26%', data:rtY, backgroundColor:R},
+          {label:'IVAFE 0,2%', data:ivY, backgroundColor:GD}
+        ]},
+        options:{maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}}
+      }));
+
+      // 3) Profitto netto per simbolo (convertito in EUR)
+      const bySym={};
+      accounts.forEach(a=>{ (a.trades||[]).forEach(t=>{
+        const dt = (t.date instanceof Date)?t.date:new Date(t.date);
+        const eur = a.currency==='EUR' ? t.profit : usdToEur(t.profit, dt, dt.getFullYear());
+        bySym[t.symbol]=(bySym[t.symbol]||0)+eur;
+      });});
+      const symL = Object.keys(bySym).sort((x,z)=>Math.abs(bySym[z])-Math.abs(bySym[x])).slice(0,12);
+      _fxCharts.push(new Chart(document.getElementById('chSym'), {
+        type:'bar',
+        data:{labels:symL, datasets:[{data:symL.map(s=>bySym[s]), backgroundColor:symL.map(s=>bySym[s]>=0?G:R)}]},
+        options:{indexAxis:'y', maintainAspectRatio:false, plugins:{legend:{display:false}}}
+      }));
+
+      // 4) Profitto per conto (EUR)
+      const byAcc={};
+      Object.values(yearlyData).forEach(d=> Object.values(d.accounts).forEach(a=>{
+        byAcc[a.accountNumber]=(byAcc[a.accountNumber]||0)+(a.netProfitEUR||0);
+      }));
+      const accL = Object.keys(byAcc);
+      _fxCharts.push(new Chart(document.getElementById('chAcc'), {
+        type:'doughnut',
+        data:{labels:accL, datasets:[{data:accL.map(l=>Math.abs(byAcc[l])), backgroundColor:accL.map((l,i)=>palette[i%palette.length])}]},
+        options:{maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}}
+      }));
+    }
+
+    // Dichiarazione del criterio di conversione: deve comparire su ogni documento
+    // consegnato al commercialista.
+    function fxMethodNote(year) {
+      const y = parseInt(year, 10);
+      if (yearMode[y] === 'fixed' && yearFixed[y]) {
+        return `<p style="margin-top:10px;font-size:11px;color:#555;"><strong>Conversione valutaria:</strong> cambio unico manuale ${yearFixed[y].toFixed(4)} (1 USD = ${yearFixed[y].toFixed(4)} EUR) applicato a tutte le operazioni dell'anno ${y}.</p>`;
+      }
+      return `<p style="margin-top:10px;font-size:11px;color:#555;"><strong>Conversione valutaria:</strong> tasso di cambio di riferimento BCE del giorno di ciascuna operazione (fonte: Banca Centrale Europea, gli stessi tassi pubblicati da Banca d'Italia su tassidicambio.bancaditalia.it). Per i giorni in cui la BCE non effettua rilevazioni (weekend e festivi) si utilizza l'ultima rilevazione precedente. I saldi iniziali e finali sono convertiti al cambio della rispettiva data di riferimento.</p>`;
+    }
+
+    // ==================== GENERATE RT PDF ====================
+    function genRT(year) {
+      const d = yearlyData[year]; if (!d) return;
+      const t = d.totals;
+      const imp = t.netProfit > 0 ? t.netProfit * 0.26 : 0;
+      
+      let rows = '';
+      Object.values(d.accounts).forEach(a => {
+        const ai = a.netProfitEUR > 0 ? a.netProfitEUR * 0.26 : 0;
+        const brokerLabel = a.displayCompany || a.company;
+        rows += `<tr><td>${a.accountNumber}</td><td>${brokerLabel}</td><td>${a.currency}</td>
+          <td style="text-align:right;">€ ${a.grossProfitEUR.toFixed(2)}</td>
+          <td style="text-align:right;">€ ${Math.abs(a.grossLossEUR).toFixed(2)}</td>
+          <td style="text-align:right;font-weight:bold;color:${a.netProfitEUR >= 0 ? '#22c55e' : '#ef4444'};">€ ${a.netProfitEUR.toFixed(2)}</td>
+          <td style="text-align:right;color:#ef4444;">€ ${ai.toFixed(2)}</td></tr>`;
+      });
+      
+      const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Quadro RT ${year}</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>
+        <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;padding:40px;max-width:900px;margin:0 auto;color:#1a1a1a;line-height:1.6}.header{text-align:center;margin-bottom:40px;padding-bottom:20px;border-bottom:3px solid #3b82f6}.header h1{font-size:28px;color:#1e40af}.header .sub{color:#666;font-size:14px;margin-top:4px}.section{margin-bottom:32px;background:#f8fafc;border-radius:12px;padding:24px}.section h2{font-size:16px;color:#3b82f6;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}.hl{background:linear-gradient(135deg,#fee2e2,#fecaca);border:2px solid #ef4444;padding:20px;border-radius:12px;margin:24px 0;text-align:center}.hl .label{font-size:14px;color:#666}.hl .value{font-size:36px;color:#dc2626;font-weight:700}table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}th,td{padding:12px;text-align:left;border-bottom:1px solid #e2e8f0}th{background:#e2e8f0;font-weight:600;font-size:11px;text-transform:uppercase}.row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e2e8f0}.row:last-child{border-bottom:none}.info{background:#eff6ff;border-left:4px solid #3b82f6;padding:16px;margin-top:24px;font-size:13px}.footer{margin-top:40px;text-align:center;font-size:12px;color:#888}.btns{text-align:center;margin:20px 0}.btn{padding:12px 24px;margin:0 8px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.btn-p{background:#3b82f6;color:#fff}.btn-s{background:#64748b;color:#fff}@media print{.btns{display:none}}</style></head><body>
+        <div class="btns"><button class="btn btn-p" onclick="dl()">📥 Scarica PDF</button> <button class="btn btn-s" onclick="window.print()">🖨️ Stampa</button></div>
+        <div id="rc">
+          <div class="header"><h1>📊 QUADRO RT — PLUSVALENZE FINANZIARIE</h1><div class="sub">Anno d'imposta ${year} • Generato il ${new Date().toLocaleDateString('it-IT')}</div></div>
+          <div class="section"><h2>📋 Riepilogo</h2>
+            <div class="row"><span>Totale Corrispettivi (RT21)</span><span style="font-weight:600">€ ${(t.grossProfit + Math.abs(t.grossLoss)).toFixed(2)}</span></div>
+            <div class="row"><span>Totale Costi (RT22)</span><span style="font-weight:600">€ ${Math.abs(t.grossLoss).toFixed(2)}</span></div>
+            <div class="row"><span>Plusvalenza Netta (RT23)</span><span style="font-weight:600;color:${t.netProfit>=0?'#22c55e':'#ef4444'}">€ ${t.netProfit.toFixed(2)}</span></div>
+          </div>
+          <div class="hl"><div class="label">IMPOSTA SOSTITUTIVA 26% (RT26)</div><div class="value">€ ${imp.toFixed(2)}</div></div>
+          <div class="section"><h2>📑 Dettaglio per Account</h2>
+            <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rows}</tbody></table>
+          </div>
+          <div class="info"><strong>📝 Istruzioni:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}</div>
+          <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+        </div>
+        <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RT_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
+      </body></html>`;
+      const w = window.open('','_blank'); w.document.write(html); w.document.close();
+    }
+    
+    // ==================== GENERATE RW PDF ====================
+    function genRW(year) {
+      const d = yearlyData[year]; if (!d) return;
+      
+      let accHTML = '';
+      Object.values(d.accounts).forEach((a, i) => {
+        const bonusEur = (a.yearRate != null ? a.totalBonusCredits * a.yearRate : 0);
+        const bonusNote = a.totalBonusCredits > 0 ? `<div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:12px;color:#92400e">⚠️ Bonus/Credit escluso: € ${bonusEur.toFixed(2)} (non prelevabile)</div>` : '';
+        const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
+        const blNote = isBlackListYear ? `<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;font-size:12px;color:#991b1b"><strong>⚠️ PAESE BLACK LIST (anno ${year}):</strong> sanzioni RW raddoppiate (6-30%), prescrizione 8 anni</div>` : '';
+        let movNote = '';
+        if (a.yearDeposits > 0 || a.yearWithdrawals > 0 || a.yearInternalIn > 0 || a.yearInternalOut > 0) {
+          let parts = [];
+          if (a.yearDeposits > 0) parts.push(`Depositi reali: € ${a.yearDepositsEUR.toFixed(2)}`);
+          if (a.yearWithdrawals > 0) parts.push(`Prelievi reali: € ${a.yearWithdrawalsEUR.toFixed(2)}`);
+          if (a.yearInternalIn > 0) parts.push(`Trasf. IN da altri conti: € ${a.yearInternalInEUR.toFixed(2)}`);
+          if (a.yearInternalOut > 0) parts.push(`Trasf. OUT verso altri conti: € ${a.yearInternalOutEUR.toFixed(2)}`);
+          movNote = `<div style="margin-top:8px;font-size:12px"><strong>Movimentazioni ${year}:</strong><br>${parts.join(' • ')}</div>`;
+        }
+        const brokerLabel = a.displayCompany || a.company;
+        const legalEntity = (a.company && brokerLabel !== a.company) ? `<div style="font-size:11px;color:#666;">Entità giuridica: ${a.company}</div>` : '';
+        accHTML += `<div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:12px;padding:20px;margin-bottom:16px">
+          <h3 style="color:#16a34a;margin-bottom:12px">Account #${i+1}: ${a.accountNumber}</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px">
+            <div><strong>Broker:</strong> ${brokerLabel}${legalEntity}</div><div><strong>Paese:</strong> ${a.countryInfo.name} (Codice: ${a.countryInfo.code})</div>
+            <div><strong>Valuta:</strong> ${a.currency}</div><div><strong>Giorni:</strong> ${a.giorni}</div>
+            <div><strong>Valore Iniziale:</strong> € ${a.valoreInizialeEUR.toFixed(2)}</div><div><strong>Valore Finale:</strong> € ${a.valoreFinaleEUR.toFixed(2)}</div>
+            ${movNote}
+          </div>${bonusNote}${blNote}
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid #bbf7d0;text-align:right"><span style="font-size:18px;font-weight:700;color:#ca8a04">IVAFE: € ${a.ivafe.toFixed(2)}</span></div>
+        </div>`;
+      });
+      
+      const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Quadro RW ${year}</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>
+        <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;padding:40px;max-width:900px;margin:0 auto;color:#1a1a1a;line-height:1.6}.header{text-align:center;margin-bottom:40px;padding-bottom:20px;border-bottom:3px solid #22c55e}.header h1{font-size:28px;color:#16a34a}.header .sub{color:#666;font-size:14px;margin-top:4px}.hl{background:linear-gradient(135deg,#fef9c3,#fef08a);border:2px solid #eab308;padding:20px;border-radius:12px;margin:24px 0;text-align:center}.hl .label{font-size:14px;color:#666}.hl .value{font-size:36px;color:#ca8a04;font-weight:700}.info{background:#f0fdf4;border-left:4px solid #22c55e;padding:16px;margin-top:24px;font-size:13px}.footer{margin-top:40px;text-align:center;font-size:12px;color:#888}.btns{text-align:center;margin:20px 0}.btn{padding:12px 24px;margin:0 8px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.btn-p{background:#22c55e;color:#fff}.btn-s{background:#64748b;color:#fff}@media print{.btns{display:none}}</style></head><body>
+        <div class="btns"><button class="btn btn-p" onclick="dl()">📥 Scarica PDF</button> <button class="btn btn-s" onclick="window.print()">🖨️ Stampa</button></div>
+        <div id="rc">
+          <div class="header"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year} • Generato il ${new Date().toLocaleDateString('it-IT')}</div></div>
+          <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${accHTML}</div>
+          <div class="hl"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
+          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}</div>
+          <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+        </div>
+        <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RW_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
+      </body></html>`;
+      const w = window.open('','_blank'); w.document.write(html); w.document.close();
+    }
+    
+    // ==================== EXPORT ====================
+    // Genera tutti i quadri (RT + RW per ogni anno) in UN'UNICA finestra
+    // Evita il blocco popup multipli del browser
+    // Costruisce HTML di RT+RW per una lista di anni (può essere uno solo o tutti)
+    function buildQuadriHtml(yearsToInclude) {
+      let allSections = '';
+      
+      yearsToInclude.forEach(year => {
+        const d = yearlyData[year];
+        if (!d) return;
+        const t = d.totals;
+        const imp = t.netProfit > 0 ? t.netProfit * 0.26 : 0;
+        
+        // ========== RT SECTION ==========
+        let rtRows = '';
+        Object.values(d.accounts).forEach(a => {
+          const ai = a.netProfitEUR > 0 ? a.netProfitEUR * 0.26 : 0;
+          const brokerLabel = a.displayCompany || a.company;
+          rtRows += `<tr><td>${a.accountNumber}</td><td>${brokerLabel}</td><td>${a.currency}</td>
+            <td style="text-align:right;">€ ${a.grossProfitEUR.toFixed(2)}</td>
+            <td style="text-align:right;">€ ${Math.abs(a.grossLossEUR).toFixed(2)}</td>
+            <td style="text-align:right;font-weight:bold;color:${a.netProfitEUR >= 0 ? '#22c55e' : '#ef4444'};">€ ${a.netProfitEUR.toFixed(2)}</td>
+            <td style="text-align:right;color:#ef4444;">€ ${ai.toFixed(2)}</td></tr>`;
+        });
+        
+        allSections += `
+          <div class="quadro-page">
+            <div class="header-rt"><h1>📊 QUADRO RT — PLUSVALENZE FINANZIARIE</h1><div class="sub">Anno d'imposta ${year}</div></div>
+            <div class="section"><h2>📋 Riepilogo</h2>
+              <div class="row"><span>Totale Corrispettivi (RT21)</span><span style="font-weight:600">€ ${(t.grossProfit + Math.abs(t.grossLoss)).toFixed(2)}</span></div>
+              <div class="row"><span>Totale Costi (RT22)</span><span style="font-weight:600">€ ${Math.abs(t.grossLoss).toFixed(2)}</span></div>
+              <div class="row"><span>Plusvalenza Netta (RT23)</span><span style="font-weight:600;color:${t.netProfit>=0?'#22c55e':'#ef4444'}">€ ${t.netProfit.toFixed(2)}</span></div>
+            </div>
+            <div class="hl-rt"><div class="label">IMPOSTA SOSTITUTIVA 26% (RT26)</div><div class="value">€ ${imp.toFixed(2)}</div></div>
+            <div class="section"><h2>📑 Dettaglio per Account</h2>
+              <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rtRows}</tbody></table>
+            </div>
+            <div class="info"><strong>📝 Istruzioni RT:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}</div>
+          </div>
+        `;
+        
+        // ========== RW SECTION ==========
+        let rwAccounts = '';
+        Object.values(d.accounts).forEach((a, i) => {
+          const bonusEur = (a.yearRate != null ? a.totalBonusCredits * a.yearRate : 0);
+          const bonusNote = a.totalBonusCredits > 0 ? `<div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:12px;color:#92400e">⚠️ Bonus/Credit escluso: € ${bonusEur.toFixed(2)} (non prelevabile)</div>` : '';
+          const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
+          const blNote = isBlackListYear ? `<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;font-size:12px;color:#991b1b"><strong>⚠️ PAESE BLACK LIST (anno ${year}):</strong> sanzioni RW raddoppiate (6-30%), prescrizione 8 anni</div>` : '';
+          let movNote = '';
+          if (a.yearDeposits > 0 || a.yearWithdrawals > 0 || a.yearInternalIn > 0 || a.yearInternalOut > 0) {
+            let parts = [];
+            if (a.yearDeposits > 0) parts.push(`Depositi reali: € ${a.yearDepositsEUR.toFixed(2)}`);
+            if (a.yearWithdrawals > 0) parts.push(`Prelievi reali: € ${a.yearWithdrawalsEUR.toFixed(2)}`);
+            if (a.yearInternalIn > 0) parts.push(`Trasf. IN: € ${a.yearInternalInEUR.toFixed(2)}`);
+            if (a.yearInternalOut > 0) parts.push(`Trasf. OUT: € ${a.yearInternalOutEUR.toFixed(2)}`);
+            movNote = `<div style="margin-top:8px;font-size:12px"><strong>Movimentazioni ${year}:</strong><br>${parts.join(' • ')}</div>`;
+          }
+          const brokerLabel = a.displayCompany || a.company;
+          const legalEntity = (a.company && brokerLabel !== a.company) ? `<div style="font-size:11px;color:#666;">Entità giuridica: ${a.company}</div>` : '';
+          rwAccounts += `<div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:12px;padding:20px;margin-bottom:16px">
+            <h3 style="color:#16a34a;margin-bottom:12px">Account #${i+1}: ${a.accountNumber}</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:14px">
+              <div><strong>Broker:</strong> ${brokerLabel}${legalEntity}</div><div><strong>Paese:</strong> ${a.countryInfo.name} (Codice: ${a.countryInfo.code})</div>
+              <div><strong>Valuta:</strong> ${a.currency}</div><div><strong>Giorni:</strong> ${a.giorni}</div>
+              <div><strong>Valore Iniziale:</strong> € ${a.valoreInizialeEUR.toFixed(2)}</div><div><strong>Valore Finale:</strong> € ${a.valoreFinaleEUR.toFixed(2)}</div>
+              ${movNote}
+            </div>${bonusNote}${blNote}
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid #bbf7d0;text-align:right"><span style="font-size:18px;font-weight:700;color:#ca8a04">IVAFE: € ${a.ivafe.toFixed(2)}</span></div>
+          </div>`;
+        });
+        
+        allSections += `
+          <div class="quadro-page page-break">
+            <div class="header-rw"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year}</div></div>
+            <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${rwAccounts}</div>
+            <div class="hl-rw"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
+            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}</div>
+          </div>
+        `;
+      });
+      
+      return allSections;
+    }
+    
+    // CSS condiviso per i PDF generati
+    const PDF_CSS = `
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Segoe UI',Arial,sans-serif;padding:30px;max-width:900px;margin:0 auto;color:#1a1a1a;line-height:1.6;background:#f5f5f5}
+      .quadro-page{background:#fff;padding:40px;margin-bottom:24px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+      .page-break{page-break-before:always}
+      .header-rt{text-align:center;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid #3b82f6}
+      .header-rt h1{font-size:24px;color:#1e40af}
+      .header-rw{text-align:center;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid #22c55e}
+      .header-rw h1{font-size:24px;color:#16a34a}
+      .sub{color:#666;font-size:13px;margin-top:4px}
+      .section{margin-bottom:24px;background:#f8fafc;border-radius:10px;padding:20px}
+      .section h2{font-size:15px;color:#3b82f6;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+      .hl-rt{background:linear-gradient(135deg,#fee2e2,#fecaca);border:2px solid #ef4444;padding:18px;border-radius:10px;margin:20px 0;text-align:center}
+      .hl-rt .label{font-size:13px;color:#666}
+      .hl-rt .value{font-size:32px;color:#dc2626;font-weight:700}
+      .hl-rw{background:linear-gradient(135deg,#fef9c3,#fef08a);border:2px solid #eab308;padding:18px;border-radius:10px;margin:20px 0;text-align:center}
+      .hl-rw .label{font-size:13px;color:#666}
+      .hl-rw .value{font-size:32px;color:#ca8a04;font-weight:700}
+      table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}
+      th,td{padding:10px;text-align:left;border-bottom:1px solid #e2e8f0}
+      th{background:#e2e8f0;font-weight:600;font-size:10px;text-transform:uppercase}
+      .row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #e2e8f0}
+      .row:last-child{border-bottom:none}
+      .info{background:#eff6ff;border-left:4px solid #3b82f6;padding:14px;margin-top:20px;font-size:12px;border-radius:6px}
+      .info-rw{background:#f0fdf4;border-left:4px solid #22c55e;padding:14px;margin-top:20px;font-size:12px;border-radius:6px}
+      .toolbar{position:sticky;top:0;z-index:100;background:#fff;border-bottom:2px solid #3b82f6;padding:16px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin:-30px -30px 24px -30px}
+      .btn{padding:12px 22px;margin:0 6px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+      .btn-p{background:#3b82f6;color:#fff}
+      .btn-p:hover{background:#2563eb}
+      .btn-s{background:#64748b;color:#fff}
+      .btn-s:hover{background:#475569}
+      .footer{margin-top:30px;text-align:center;font-size:11px;color:#888;padding:20px}
+      @media print{
+        body{background:#fff;padding:0}
+        .toolbar{display:none}
+        .quadro-page{box-shadow:none;margin:0;border-radius:0}
+      }
+    `;
+    
+    // Grafici come immagini PNG, da includere nei PDF/report stampati
+    function chartsImagesHtml(){
+      if(!_fxCharts || _fxCharts.length < 4) return '';
+      const titles=['Profitto netto per anno (EUR)','Imposte per anno: RT + IVAFE (EUR)','Profitto netto per simbolo (EUR)','Profitto per conto (EUR)'];
+      let imgs='';
+      _fxCharts.forEach((c,i)=>{
+        try{
+          // bake a dark background into the PNG so it stays readable in any print mode
+          const src=c.canvas;
+          const tmp=document.createElement('canvas'); tmp.width=src.width; tmp.height=src.height;
+          const ctx=tmp.getContext('2d'); ctx.fillStyle='#0f172a'; ctx.fillRect(0,0,tmp.width,tmp.height); ctx.drawImage(src,0,0);
+          const url=tmp.toDataURL('image/png');
+          imgs+=`<div style="width:48%;background:#0f172a;border-radius:8px;padding:12px;margin-bottom:16px;">
+            <div style="font-size:12px;color:#93c5fd;font-weight:600;margin-bottom:6px;">${titles[i]||''}</div>
+            <img src="${url}" style="width:100%;display:block;">
+          </div>`;
+        }catch(e){}
+      });
+      if(!imgs) return '';
+      return `<div class="quadro-page"><div class="header-rt"><h1>📈 Panoramica grafica</h1><div class="sub">Sintesi visiva del periodo</div></div>
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;">${imgs}</div></div>`;
+    }
+
+    function exportAllPDF() {
+      const years = Object.keys(yearlyData).sort();
+      if (years.length === 0) { showStatus('⚠️ Nessun dato da esportare', true); return; }
+
+      const allSections = chartsImagesHtml() + buildQuadriHtml(years);
+      const filename = `Quadri_RT_RW_${years[0]}-${years[years.length-1]}.pdf`;
+      const title = `Quadri RT + RW — ${years.length === 1 ? 'Anno ' + years[0] : 'Anni ' + years[0] + '-' + years[years.length-1]}`;
+      
+      const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>${title}</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>
+        <style>${PDF_CSS}</style></head><body>
+        <div class="toolbar">
+          <button class="btn btn-p" onclick="dlAll()">📥 Scarica PDF Unico</button>
+          <button class="btn btn-s" onclick="window.print()">🖨️ Stampa</button>
+          <span style="margin-left:16px;font-size:12px;color:#666">${years.length} anno/i — ${years.length * 2} quadri totali</span>
+        </div>
+        <div id="rc">
+          ${allSections}
+          <div class="footer"><p>Report generato da MT5 Fiscal Analyzer v3</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+        </div>
+        <script>function dlAll(){html2pdf().set({margin:8,filename:'${filename}',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['avoid-all','css','legacy']}}).from(document.getElementById('rc')).save()}<\/script>
+      </body></html>`;
+      
+      const w = window.open('', '_blank');
+      if (!w) {
+        showStatus('⚠️ Popup bloccato dal browser. Abilita i popup per questo sito.', true);
+        return;
+      }
+      w.document.write(html); w.document.close();
+      showStatus(`✅ Aperti ${years.length * 2} quadri (RT + RW per ${years.length} anno/i) in un'unica pagina`);
+    }
+    
+    // Genera UN PDF separato per ciascun anno (ognuno contiene RT+RW di quell'anno)
+    // Apre un'unica finestra "indice" con i bottoni di download per ogni anno
+    function exportPerYearPDF() {
+      const years = Object.keys(yearlyData).sort();
+      if (years.length === 0) { showStatus('⚠️ Nessun dato da esportare', true); return; }
+      
+      // Costruisce le sezioni anno per anno (ciascuna in un container separato)
+      let yearContainers = '';
+      let yearButtons = '';
+      
+      years.forEach((year, idx) => {
+        const yearSections = buildQuadriHtml([year]);
+        const containerId = `year_${year}`;
+        const filename = `Quadri_RT_RW_${year}.pdf`;
+        const t = yearlyData[year].totals;
+        const imp = t.netProfit > 0 ? t.netProfit * 0.26 : 0;
+        const numAccounts = Object.keys(yearlyData[year].accounts).length;
+        
+        // Bottone in alto per ogni anno
+        yearButtons += `<button class="btn btn-p" onclick="dlYear('${containerId}','${filename}')" style="margin:4px;">📥 ${year} (${numAccounts} conti, RT €${imp.toFixed(2)})</button>`;
+        
+        // Container nascosto con il contenuto da generare
+        yearContainers += `<div id="${containerId}" style="${idx > 0 ? 'display:none;' : ''}">
+          ${yearSections}
+          <div class="footer"><p>Report generato da MT5 Fiscal Analyzer v3 — Anno ${year}</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+        </div>`;
+      });
+      
+      const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Quadri RT+RW Per Anno</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>
+        <style>${PDF_CSS}
+          .year-selector{background:#1e293b;color:#fff;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center}
+          .year-selector h2{font-size:16px;margin-bottom:12px;color:#fbbf24}
+          .year-selector .hint{font-size:12px;color:#94a3b8;margin-top:10px}
+          .switch-btn{background:#475569;color:#fff;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;margin:2px;font-size:12px}
+          .switch-btn:hover{background:#64748b}
+          .switch-btn.active{background:#22c55e}
+        </style></head><body>
+        <div class="toolbar">
+          <button class="btn btn-s" onclick="window.print()">🖨️ Stampa pagina visibile</button>
+          <span style="margin-left:16px;font-size:12px;color:#666">${years.length} anno/i — un PDF separato per ciascuno</span>
+        </div>
+        
+        <div class="year-selector">
+          <h2>📥 Scarica un PDF separato per ogni anno</h2>
+          <div>${yearButtons}</div>
+          <div class="hint">Ogni PDF contiene Quadro RT + Quadro RW dell'anno selezionato.<br>Clicca un anno per scaricarlo. Per anteprima usa i pulsanti sotto.</div>
+        </div>
+        
+        <div style="text-align:center;margin-bottom:20px">
+          <span style="font-size:13px;color:#666;margin-right:10px">Anteprima:</span>
+          ${years.map((y, i) => `<button class="switch-btn ${i === 0 ? 'active' : ''}" onclick="showYear('year_${y}', this)">${y}</button>`).join('')}
+        </div>
+        
+        <div id="rc">
+          ${yearContainers}
+        </div>
+        
+        <script>
+          function showYear(id, btn) {
+            document.querySelectorAll('[id^="year_"]').forEach(el => el.style.display = 'none');
+            document.getElementById(id).style.display = 'block';
+            document.querySelectorAll('.switch-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+          }
+          function dlYear(id, filename) {
+            // Mostra temporaneamente l'anno richiesto per generare il PDF
+            const target = document.getElementById(id);
+            const wasHidden = target.style.display === 'none';
+            if (wasHidden) target.style.display = 'block';
+            
+            html2pdf().set({
+              margin: 8,
+              filename: filename,
+              image: { type: 'jpeg', quality: 0.95 },
+              html2canvas: { scale: 2 },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+              pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            }).from(target).save().then(() => {
+              if (wasHidden) target.style.display = 'none';
+            });
+          }
+        <\/script>
+      </body></html>`;
+      
+      const w = window.open('', '_blank');
+      if (!w) {
+        showStatus('⚠️ Popup bloccato dal browser. Abilita i popup per questo sito.', true);
+        return;
+      }
+      w.document.write(html); w.document.close();
+      showStatus(`✅ Aperta finestra con ${years.length} PDF separati (uno per anno)`);
+    }
+    
+    function exportCSV() {
+      let csv = 'Anno,Account,Broker,Entita giuridica,Paese,Codice paese,Black list,Valuta,Trade,Profitto Lordo,Perdita,Profitto Netto EUR,Imposta RT,Val.Iniziale,Val.Finale,Giorni,IVAFE,Depositi reali EUR,Prelievi reali EUR,Trasf. IN EUR,Trasf. OUT EUR,Cambio anno\n';
+      Object.entries(yearlyData).sort().forEach(([year, d]) => {
+        Object.values(d.accounts).forEach(a => {
+          const imp = a.netProfitEUR > 0 ? (a.netProfitEUR * 0.26).toFixed(2) : '0.00';
+          const rl = a.yearRateLabel || '';
+          const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
+          const brokerLabel = a.displayCompany || a.company;
+          csv += `${year},${a.accountNumber},"${brokerLabel}","${a.company}","${a.countryInfo.name}",${a.countryInfo.code},${isBlackListYear ? 'SI' : 'NO'},${a.currency},${a.trades},${a.grossProfitEUR.toFixed(2)},${Math.abs(a.grossLossEUR).toFixed(2)},${a.netProfitEUR.toFixed(2)},${imp},${a.valoreInizialeEUR.toFixed(2)},${a.valoreFinaleEUR.toFixed(2)},${a.giorni},${a.ivafe.toFixed(2)},${(a.yearDepositsEUR||0).toFixed(2)},${(a.yearWithdrawalsEUR||0).toFixed(2)},${(a.yearInternalInEUR||0).toFixed(2)},${(a.yearInternalOutEUR||0).toFixed(2)},"${rl}"\n`;
+        });
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `MT5_Fiscal_Report_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      showStatus('✅ CSV esportato');
+    }
+    
+    function clearData() {
+      if (!confirm('Cancellare tutti i dati MT5 caricati?')) return;
+      accounts = []; yearlyData = {}; clearStorage();
+      document.getElementById('resultsSection').style.display = 'none';
+      document.getElementById('currencySection').style.display = 'none';
+      document.getElementById('dropZone').innerHTML = '<div class="icon">📊</div><p>Trascina qui i report MT5 (.xlsx) o un\'intera cartella</p><p class="hint">💡 MT5 → Toolbox → Cronologia → Tasto destro → Report → Excel</p>';
+      showStatus('🗑️ Dati cancellati');
+    }
+  </script>
+</body>
+</html>

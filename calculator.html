@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MQL5 Proventi Calculator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<script src="fx.js"></script>
+<style>
+* { box-sizing: border-box; font-family: -apple-system, system-ui, sans-serif; }
+body { background: #0f172a; color: #e2e8f0; padding: 20px; max-width: 1200px; margin: 0 auto; }
+h1 { color: #60a5fa; border-bottom: 2px solid #334155; padding-bottom: 10px; }
+h2 { color: #fbbf24; margin-top: 30px; }
+.info { background: #1e293b; border-left: 4px solid #60a5fa; padding: 15px; margin: 15px 0; border-radius: 6px; }
+.row { display: grid; grid-template-columns: 135px 1fr 95px 85px 140px 95px 40px 44px; gap: 8px; align-items: center; padding: 8px; background: #1e293b; margin: 4px 0; border-radius: 4px; }
+.row.header { background: #334155; font-weight: bold; color: #fbbf24; font-size: 13px; }
+.row.blocked { opacity: 0.6; background: #422006; }
+input[type="date"], input[type="text"], input[type="number"], select, textarea { background: #0f172a; color: #e2e8f0; border: 1px solid #475569; padding: 6px; border-radius: 4px; font-size: 13px; }
+input[type="number"] { text-align: right; }
+textarea { width: 100%; min-height: 150px; font-family: monospace; font-size: 11px; }
+button { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin: 5px; font-size: 14px; }
+button:hover { background: #1d4ed8; }
+button.danger { background: #dc2626; }
+button.success { background: #16a34a; }
+button.big { font-size: 16px; padding: 14px 28px; }
+.totali { background: linear-gradient(135deg, #1e40af, #6d28d9); padding: 20px; border-radius: 8px; margin: 20px 0; }
+.totali h3 { margin: 0 0 10px 0; color: #fbbf24; }
+.tot-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.2); }
+.tot-row.big { font-size: 1.2em; font-weight: bold; color: #fbbf24; }
+.tabs { display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap; }
+.tab { padding: 10px 20px; background: #1e293b; cursor: pointer; border-radius: 6px; user-select: none; }
+.tab.active { background: #2563eb; color: white; }
+.section { display: none; }
+.section.active { display: block; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0; }
+.paste-box { background: #1e293b; padding: 20px; border-radius: 8px; margin: 15px 0; border: 2px dashed #60a5fa; }
+.paste-box h3 { margin-top: 0; color: #60a5fa; }
+.stat { background: #059669; padding: 10px 15px; border-radius: 6px; display: inline-block; margin: 5px; }
+.panel { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 18px; margin: 15px 0; }
+.panel h3 { margin: 0 0 12px 0; color: #60a5fa; font-size: 15px; }
+.price-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; flex-wrap: wrap; }
+.modes { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.mode { flex: 1; min-width: 220px; background: #0f172a; border: 2px solid #334155; border-radius: 8px; padding: 12px; cursor: pointer; }
+.mode.active { border-color: #2563eb; background: #172554; }
+.mode .t { font-weight: 700; font-size: 14px; }
+.mode .d { font-size: 11px; color: #94a3b8; margin-top: 4px; line-height: 1.4; }
+.badge { padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.badge.ok { background: #14532d; color: #4ade80; }
+.badge.warn { background: #78350f; color: #fbbf24; }
+.badge.bad { background: #7f1d1d; color: #fca5a5; }
+.alert { background: #7f1d1d; border: 1px solid #ef4444; color: #fecaca; padding: 12px 15px; border-radius: 8px; margin: 12px 0; font-size: 13px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+.field input, .field select, .field textarea { width: 100%; }
+.field textarea { min-height: 70px; font-family: inherit; font-size: 13px; }
+.home-link { display: inline-block; color: #60a5fa; text-decoration: none; font-size: 13px; margin-bottom: 10px; }
+.home-link:hover { text-decoration: underline; }
+@media (max-width: 760px) {
+  .row { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .row.header { display: none; }
+  .row > button { padding: 6px 10px; font-size: 13px; justify-self: end; }
+  .row > input[type="checkbox"] { justify-self: start; width: 20px; height: 20px; }
+  .mode { min-width: 100%; }
+  body { padding: 14px; }
+}
+</style>
+</head>
+<body>
+
+<a class="home-link" href="index.html">← Torna alla suite</a>
+<h1>🎯 MQL5 Proventi Calculator</h1>
+
+<div class="info">
+<strong>Come funziona:</strong><br>
+1. Vai su MQL5 → Payments → seleziona "Payment for product" → seleziona e copia tutta la tabella<br>
+2. Torna qui, incolla il testo nell'area "Prodotti" e clicca "Analizza e inserisci"<br>
+3. Il sistema calcola automaticamente il <b>lordo reale</b> dal netto (netto ÷ 0.80)<br>
+4. Fai lo stesso con i Segnali (Signal subscription)<br>
+5. Vai su "Riepilogo" per vedere totali e generare il PDF<br>
+<br>
+<strong>💡 Nota:</strong> Il prezzo lordo è calcolato automaticamente dal netto effettivo di ogni singola vendita, quindi rispecchia il prezzo vero al momento della vendita (anche se hai cambiato prezzo nel tempo).
+</div>
+
+<div class="panel">
+<h3>📝 Dati del report</h3>
+<p style="font-size:12px;color:#94a3b8;margin:0 0 12px 0;">Compaiono solo nel PDF che generi. Restano su questo dispositivo: non vengono mai inviati da nessuna parte.</p>
+<div class="fields">
+    <div class="field">
+        <label>Intestatario</label>
+        <input type="text" id="rep_nome" placeholder="Nome Cognome" oninput="saveState()">
+    </div>
+    <div class="field">
+        <label>Anno d'imposta</label>
+        <input type="number" id="rep_anno" step="1" min="2000" max="2099" oninput="saveState(); refresh()">
+    </div>
+    <div class="field" style="grid-column:1/-1;">
+        <label>Nota per il commercialista (facoltativa)</label>
+        <textarea id="rep_nota" placeholder="Es. situazione partita IVA, natura occasionale dell'attività..." oninput="saveState()"></textarea>
+    </div>
+</div>
+</div>
+
+<div class="panel">
+<h3>💱 Conversione USD → EUR</h3>
+<p style="font-size:12px;color:#94a3b8;margin:0 0 12px 0;">
+Fonte: tassi di riferimento <strong>BCE</strong>, gli stessi pubblicati da
+<a href="https://tassidicambio.bancaditalia.it/" target="_blank" style="color:#60a5fa;">Banca d'Italia</a>.
+Convenzione usata ovunque nell'app: <strong>1 USD = X EUR</strong> (es. 0.9243).
+</p>
+<div class="modes">
+    <div class="mode" id="mode-daily" onclick="setRateMode('daily')">
+        <div class="t">📆 Cambio del giorno</div>
+        <div class="d">Ogni vendita convertita al cambio BCE della sua data. Il criterio più difendibile (art. 9 TUIR: cambio del giorno di percezione).</div>
+    </div>
+    <div class="mode" id="mode-monthly" onclick="setRateMode('monthly')">
+        <div class="t">📅 Cambio medio mensile</div>
+        <div class="d">Media delle rilevazioni BCE del mese della vendita, calcolata sui dati reali. Corrisponde al cambio medio mensile ufficiale.</div>
+    </div>
+    <div class="mode" id="mode-fixed" onclick="setRateMode('fixed')">
+        <div class="t">✏️ Cambio unico manuale</div>
+        <div class="d">Un solo cambio per tutte le vendite, deciso da te. Da usare solo se il commercialista lo richiede.</div>
+    </div>
+</div>
+<div class="price-row" id="fixed-row" style="display:none;">
+    <span>Cambio fisso — 1 USD = <span id="fixed-inv" style="color:#94a3b8;font-size:12px;"></span></span>
+    <input type="number" id="cambio_eur" value="0.9200" step="0.0001" min="0.1" max="3" onchange="onFixedChange()">
+</div>
+<div class="actions" style="margin-top:10px;">
+    <button onclick="downloadRates()" class="success">⬇️ Scarica / aggiorna cambi BCE</button>
+    <button onclick="showRateDetail()">🔍 Cambi applicati</button>
+</div>
+<div id="cambio-status" style="font-size:12px;color:#94a3b8;margin-top:10px;"></div>
+<div id="cambio-detail"></div>
+</div>
+
+<div class="tabs">
+    <div class="tab active" onclick="showTab('prodotti', event)">📦 Prodotti</div>
+    <div class="tab" onclick="showTab('segnali', event)">📡 Segnali</div>
+    <div class="tab" onclick="showTab('riepilogo', event)">📊 Riepilogo</div>
+</div>
+
+<!-- PRODOTTI -->
+<div id="prodotti" class="section active">
+<h2>📦 Prodotti venduti (Payment for product)</h2>
+
+<div class="paste-box">
+<h3>📥 Incolla qui il testo copiato da MQL5:</h3>
+<textarea id="paste-products" placeholder="Esempio:
+2026.04.05	16136053	Payment for product 'BTC AutoTrader' 1 month rent	Product	mql5_internal	Moreno Dainese	79.20
+2026.03.28	16091917	Payment for product 'BTC AutoTrader'	Product	mql5_internal	Moreno Dainese	399.20
+..."></textarea>
+<div class="actions">
+    <button onclick="parseProducts()" class="success big">🔍 Analizza e inserisci</button>
+    <button onclick="document.getElementById('paste-products').value=''" class="danger">🗑️ Svuota</button>
+</div>
+<div id="parse-products-result"></div>
+</div>
+
+<div class="actions">
+    <button onclick="addProduct()">+ Aggiungi manualmente</button>
+    <button onclick="clearAll('products')" class="danger">🗑️ Cancella tutti</button>
+</div>
+
+<div class="row header">
+    <span>Data</span><span>Prodotto</span><span>Lordo USD</span><span>Netto USD</span><span>Cambio</span><span>Lordo EUR</span><span>🔒</span><span>×</span>
+</div>
+<div id="products-list"></div>
+</div>
+
+<!-- SEGNALI -->
+<div id="segnali" class="section">
+<h2>📡 Signal subscriptions</h2>
+
+<div class="paste-box">
+<h3>📥 Incolla qui il testo copiato da MQL5:</h3>
+<textarea id="paste-signals" placeholder="Esempio:
+2026.04.15	16184383	Subscription to signal 'XAU AUTOTRADER' (author: 'skauch') for a month (04.16-05.16)	Signal	mql5_internal	Moreno Dainese	24.00
+..."></textarea>
+<div class="actions">
+    <button onclick="parseSignals()" class="success big">🔍 Analizza e inserisci</button>
+    <button onclick="document.getElementById('paste-signals').value=''" class="danger">🗑️ Svuota</button>
+</div>
+<div id="parse-signals-result"></div>
+</div>
+
+<div class="actions">
+    <button onclick="addSignal()">+ Aggiungi manualmente</button>
+    <button onclick="clearAll('signals')" class="danger">🗑️ Cancella tutti</button>
+</div>
+
+<div class="row header">
+    <span>Data</span><span>Segnale</span><span>Lordo USD</span><span>Netto USD</span><span>Cambio</span><span>Lordo EUR</span><span>🔒</span><span>×</span>
+</div>
+<div id="signals-list"></div>
+</div>
+
+<!-- RIEPILOGO -->
+<div id="riepilogo" class="section">
+<h2>📊 Riepilogo totale</h2>
+<div id="summary"></div>
+<button onclick="generatePDF()" class="success big">📄 Stampa / Salva PDF</button>
+</div>
+
+<script>
+let products = [];
+let signals = [];
+
+function detectProduct(text) {
+    const t = text.toLowerCase();
+    // Prodotti TUOI (vendi tu come autore)
+    if (t.includes('btc autotrader')) {
+        if (t.includes('1 month rent') || t.includes('months rent') || t.includes('month rent')) {
+            const m = t.match(/(\d+)\s*month/);
+            if (m) return `BTC AutoTrader ${m[1]} month${m[1]>1?'s':''} rent`;
+            return 'BTC AutoTrader rent';
+        }
+        if (t.includes('year rent') || t.includes('1 year')) return 'BTC AutoTrader 1 year rent';
+        return 'BTC AutoTrader';
+    }
+    if (t.includes('xau autotrader')) {
+        if (t.includes('months rent') || t.includes('month rent')) {
+            const m = t.match(/(\d+)\s*month/);
+            if (m) return `XAU AutoTrader ${m[1]} months rent`;
+            return 'XAU AutoTrader rent';
+        }
+        return 'XAU AutoTrader';
+    }
+    if (t.includes('eur autotrader')) return 'EUR AutoTrader';
+    if (t.includes('gold hydra')) {
+        if (t.includes('months rent')) return 'Gold Hydra Bot months rent';
+        return 'Gold Hydra Bot';
+    }
+    // Prodotti che potresti aver ACQUISTATO (non tuoi)
+    if (t.includes("payment for product 'aot'") || /\baot\b/i.test(t.replace(/['"]/g,''))) return 'Aot';
+    if (t.includes('abs goldgrid')) return 'ABS GoldGrid';
+    if (t.includes('gold switch')) return 'Gold Switch';
+    // Cattura generica per altri prodotti (verranno flaggati come acquisti)
+    const m = text.match(/Payment for product\s+['"]([^'"]+)['"]/i);
+    if (m) return m[1];
+    return null;
+}
+
+function detectSignal(text) {
+    const t = text.toLowerCase();
+    if (t.includes('xau autotrader')) return 'XAU AUTOTRADER';
+    if (t.includes('btc autotrader')) return 'BTC AUTOTRADER';
+    return null;
+}
+
+function parseDate(str) {
+    const m = str.match(/(\d{4})[.-](\d{2})[.-](\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    return null;
+}
+
+function parseAmount(str) {
+    // Cerca l'importo alla fine del record (numero con decimali)
+    const matches = str.match(/(\d+\.\d{2})/g);
+    if (matches && matches.length > 0) {
+        return parseFloat(matches[matches.length - 1]); // ultimo match
+    }
+    return null;
+}
+
+function detectBlocked(text) {
+    return /\b\d+days\b/i.test(text);
+}
+
+function parseLines(rawText) {
+    const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const records = [];
+    let current = '';
+    for (const line of lines) {
+        if (/^\d{4}[.-]\d{2}[.-]\d{2}/.test(line)) {
+            if (current) records.push(current);
+            current = line;
+        } else {
+            current += ' ' + line;
+        }
+    }
+    if (current) records.push(current);
+    return records;
+}
+
+// Stato di anteprima: lista provvisoria prima di confermare
+let previewProducts = [];
+let previewSignals = [];
+
+function parseProducts() {
+    const raw = document.getElementById('paste-products').value;
+    if (!raw.trim()) { alert('Incolla prima il testo!'); return; }
+    
+    const records = parseLines(raw);
+    previewProducts = [];
+    let skipped = 0;
+    
+    for (const rec of records) {
+        const date = parseDate(rec);
+        const product = detectProduct(rec);
+        const netto = parseAmount(rec);
+        const blocked = detectBlocked(rec);
+        
+        if (date && product && netto) {
+            const lordo = Math.round((netto / 0.80) * 100) / 100;
+            previewProducts.push({ date, product, lordo, blocked, netto, raw: rec, include: true });
+        } else {
+            skipped++;
+        }
+    }
+    
+    renderPreviewProducts(skipped);
+}
+
+function renderPreviewProducts(skipped) {
+    const box = document.getElementById('parse-products-result');
+    if (previewProducts.length === 0) {
+        box.innerHTML = `<div class="stat" style="background:#dc2626">⚠️ Nessuna vendita riconosciuta. Controlla il testo incollato.</div>`;
+        return;
+    }
+    
+    let html = `<div style="background:#1e293b;border:2px solid #fbbf24;padding:15px;border-radius:8px;margin-top:10px">
+        <h3 style="margin-top:0;color:#fbbf24">📋 Anteprima — Conferma le vendite da inserire</h3>
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:10px">⚠️ Importante: deseleziona le righe che NON sono tue vendite (es. acquisti che hai fatto tu come cliente, attivazioni non andate a buon fine).</p>
+        <div style="max-height:400px;overflow-y:auto">`;
+    
+    previewProducts.forEach((p, i) => {
+        const flagBuy = guessIsPurchase(p);
+        const warning = flagBuy ? `<span style="background:#dc2626;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:8px">🚨 Probabile acquisto tuo</span>` : '';
+        if (flagBuy) p.include = false; // default: escludi i probabili acquisti
+        html += `<label style="display:flex;align-items:center;gap:10px;padding:8px;background:${p.include?'#0f172a':'#422006'};border-radius:4px;margin:4px 0;cursor:pointer">
+            <input type="checkbox" ${p.include?'checked':''} onchange="togglePreviewProduct(${i})" style="width:18px;height:18px">
+            <div style="flex:1">
+                <div style="font-weight:600">${p.date} — ${p.product}${warning}</div>
+                <div style="font-size:11px;color:#94a3b8">Netto $${p.netto.toFixed(2)} → Lordo $${p.lordo.toFixed(2)}</div>
+            </div>
+        </label>`;
+    });
+    
+    html += `</div>
+        <div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap">
+            <button onclick="confirmPreviewProducts()" class="success">✅ Conferma e inserisci</button>
+            <button onclick="cancelPreviewProducts()" class="danger">❌ Annulla</button>
+            <button onclick="selectAllPreview('product', true)">Seleziona tutti</button>
+            <button onclick="selectAllPreview('product', false)">Deseleziona tutti</button>
+        </div>
+        ${skipped > 0 ? `<p style="margin-top:10px;color:#fbbf24;font-size:12px">⚠️ ${skipped} righe non riconosciute scartate</p>` : ''}
+    </div>`;
+    
+    box.innerHTML = html;
+}
+
+function togglePreviewProduct(i) {
+    previewProducts[i].include = !previewProducts[i].include;
+    renderPreviewProducts(0);
+}
+
+function selectAllPreview(type, value) {
+    if (type === 'product') {
+        previewProducts.forEach(p => p.include = value);
+        renderPreviewProducts(0);
+    } else {
+        previewSignals.forEach(s => s.include = value);
+        renderPreviewSignals(0);
+    }
+}
+
+function confirmPreviewProducts() {
+    let added = 0, excluded = 0;
+    for (const p of previewProducts) {
+        if (p.include) {
+            products.push({ date: p.date, product: p.product, lordo: p.lordo, nettoOriginale: p.netto, blocked: p.blocked });
+            added++;
+        } else {
+            excluded++;
+        }
+    }
+    previewProducts = [];
+    renderProducts(); saveState(); refresh();
+    document.getElementById('paste-products').value = '';
+    document.getElementById('parse-products-result').innerHTML = `<div class="stat">✅ Aggiunti: ${added}</div>${excluded>0?`<div class="stat" style="background:#dc2626">🚫 Esclusi: ${excluded}</div>`:''}`;
+}
+
+function cancelPreviewProducts() {
+    previewProducts = [];
+    document.getElementById('parse-products-result').innerHTML = '';
+}
+
+// Euristica: identifica se una riga è probabilmente un acquisto del proprietario
+// Su MQL5 i propri acquisti (frecce ⬇️) appaiono nella stessa lista, ma quando copi il testo
+// non c'è una marca diretta. Indizio principale: prodotti che NON sono i tuoi noti.
+function guessIsPurchase(p) {
+    // Lista prodotti TUOI (vendi tu come autore "skauch")
+    const myProducts = ['btc autotrader', 'xau autotrader', 'gold hydra', 'eur autotrader'];
+    const t = (p.product || '').toLowerCase();
+    // Se il prodotto NON è uno dei tuoi → quasi sicuramente un acquisto che hai fatto
+    return !myProducts.some(mp => t.includes(mp));
+}
+
+function parseSignals() {
+    const raw = document.getElementById('paste-signals').value;
+    if (!raw.trim()) { alert('Incolla prima il testo!'); return; }
+    
+    const records = parseLines(raw);
+    previewSignals = [];
+    let skipped = 0;
+    
+    for (const rec of records) {
+        const date = parseDate(rec);
+        const signal = detectSignal(rec);
+        const netto = parseAmount(rec);
+        const blocked = detectBlocked(rec);
+        // Rileva attivazioni non eseguite: presenza di "unsubscribed" o "cancelled" o "?"
+        const isCancelled = /unsubscribed|cancell|refund|attivazione non eseguita/i.test(rec);
+        
+        if (date && signal && netto) {
+            const lordo = Math.round((netto / 0.80) * 100) / 100;
+            previewSignals.push({ date, signal, lordo, blocked, netto, raw: rec, include: !isCancelled, cancelled: isCancelled });
+        } else {
+            skipped++;
+        }
+    }
+    
+    renderPreviewSignals(skipped);
+}
+
+function renderPreviewSignals(skipped) {
+    const box = document.getElementById('parse-signals-result');
+    if (previewSignals.length === 0) {
+        box.innerHTML = `<div class="stat" style="background:#dc2626">⚠️ Nessun segnale riconosciuto.</div>`;
+        return;
+    }
+    
+    let html = `<div style="background:#1e293b;border:2px solid #fbbf24;padding:15px;border-radius:8px;margin-top:10px">
+        <h3 style="margin-top:0;color:#fbbf24">📋 Anteprima — Conferma i segnali da inserire</h3>
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:10px">⚠️ Deseleziona le sottoscrizioni annullate o non andate a buon fine.</p>
+        <div style="max-height:400px;overflow-y:auto">`;
+    
+    previewSignals.forEach((s, i) => {
+        const warning = s.cancelled ? `<span style="background:#dc2626;color:white;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:8px">🚨 Annullata/unsubscribed</span>` : '';
+        html += `<label style="display:flex;align-items:center;gap:10px;padding:8px;background:${s.include?'#0f172a':'#422006'};border-radius:4px;margin:4px 0;cursor:pointer">
+            <input type="checkbox" ${s.include?'checked':''} onchange="togglePreviewSignal(${i})" style="width:18px;height:18px">
+            <div style="flex:1">
+                <div style="font-weight:600">${s.date} — ${s.signal}${warning}</div>
+                <div style="font-size:11px;color:#94a3b8">Netto $${s.netto.toFixed(2)} → Lordo $${s.lordo.toFixed(2)}</div>
+            </div>
+        </label>`;
+    });
+    
+    html += `</div>
+        <div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap">
+            <button onclick="confirmPreviewSignals()" class="success">✅ Conferma e inserisci</button>
+            <button onclick="cancelPreviewSignals()" class="danger">❌ Annulla</button>
+            <button onclick="selectAllPreview('signal', true)">Seleziona tutti</button>
+            <button onclick="selectAllPreview('signal', false)">Deseleziona tutti</button>
+        </div>
+        ${skipped > 0 ? `<p style="margin-top:10px;color:#fbbf24;font-size:12px">⚠️ ${skipped} righe non riconosciute scartate</p>` : ''}
+    </div>`;
+    
+    box.innerHTML = html;
+}
+
+function togglePreviewSignal(i) {
+    previewSignals[i].include = !previewSignals[i].include;
+    renderPreviewSignals(0);
+}
+
+function confirmPreviewSignals() {
+    let added = 0, excluded = 0;
+    for (const s of previewSignals) {
+        if (s.include) {
+            signals.push({ date: s.date, signal: s.signal, lordo: s.lordo, nettoOriginale: s.netto, blocked: s.blocked });
+            added++;
+        } else {
+            excluded++;
+        }
+    }
+    previewSignals = [];
+    renderSignals(); saveState(); refresh();
+    document.getElementById('paste-signals').value = '';
+    document.getElementById('parse-signals-result').innerHTML = `<div class="stat">✅ Aggiunti: ${added}</div>${excluded>0?`<div class="stat" style="background:#dc2626">🚫 Esclusi: ${excluded}</div>`:''}`;
+}
+
+function cancelPreviewSignals() {
+    previewSignals = [];
+    document.getElementById('parse-signals-result').innerHTML = '';
+}
+
+function showTab(name, ev) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(name).classList.add('active');
+    if (ev) ev.target.classList.add('active');
+    if (name === 'riepilogo') renderSummary();
+}
+
+function refresh() {
+    if (document.getElementById('riepilogo').classList.contains('active')) renderSummary();
+}
+
+// ============ MOTORE CAMBI (usa FX.js — convenzione: 1 USD = rate EUR) ============
+// Nessun cambio viene salvato dentro le vendite: viene sempre ricalcolato dalla
+// data. Cosi' non puo' restare appeso un cambio vecchio o di un'altra modalita'.
+let rateMode = 'daily'; // 'daily' | 'monthly' | 'fixed'
+
+function setRateMode(mode) {
+    rateMode = mode;
+    ['daily','monthly','fixed'].forEach(m => {
+        document.getElementById('mode-' + m).classList.toggle('active', m === mode);
+    });
+    document.getElementById('fixed-row').style.display = (mode === 'fixed') ? 'flex' : 'none';
+    updateFixedHint();
+    saveState();
+    renderProducts(); renderSignals(); refresh();
+    document.getElementById('cambio-detail').innerHTML = '';
+    updateRateStatus();
+}
+
+function getFixedRate() {
+    const v = parseFloat(document.getElementById('cambio_eur').value);
+    return (isFinite(v) && v > 0) ? v : null;
+}
+
+function updateFixedHint() {
+    const v = getFixedRate();
+    const el = document.getElementById('fixed-inv');
+    if (!el) return;
+    el.textContent = v ? `${v.toFixed(4)} EUR  →  1 EUR = ${(1/v).toFixed(4)} USD` : '';
+}
+
+function onFixedChange() {
+    const v = getFixedRate();
+    if (v && !FX.isPlausible(v)) {
+        alert(`Attenzione: ${v} non sembra un cambio EUR per dollaro.\n\nQui va inserito quanti EURO vale UN DOLLARO (valore tipico fra 0.80 e 1.00).\nSe hai scritto il cambio "dollari per euro" (es. 1.08), inserisci invece ${(1/v).toFixed(4)}.`);
+    }
+    updateFixedHint();
+    saveState();
+    renderProducts(); renderSignals(); refresh();
+}
+
+// Cambio applicabile a una vendita, secondo la modalita' attiva.
+// Ritorna sempre { rate, source, refDate } con rate null se non disponibile.
+function rateFor(dateStr) {
+    if (rateMode === 'fixed') {
+        const v = getFixedRate();
+        return v ? { rate: v, source: 'MANUALE', refDate: 'fisso' } : { rate: null, source: null, refDate: null };
+    }
+    if (!dateStr) return { rate: null, source: null, refDate: null };
+    if (rateMode === 'monthly') {
+        const y = parseInt(dateStr.slice(0,4), 10);
+        const m = parseInt(dateStr.slice(5,7), 10);
+        return FX.monthlyAverage(y, m);
+    }
+    return FX.rate(dateStr);
+}
+
+function rateBadge(r) {
+    if (!r || r.rate == null) return '<span class="badge bad">cambio mancante</span>';
+    if (r.source === 'MANUALE') return `<span class="badge warn">${r.rate.toFixed(4)} manuale</span>`;
+    if (r.source === 'BCE_PREC') return `<span class="badge warn">${r.rate.toFixed(4)} BCE ${r.refDate}</span>`;
+    return `<span class="badge ok">${r.rate.toFixed(4)} BCE</span>`;
+}
+
+function allItems() {
+    return products.map(p => ({ it: p, kind: 'prodotto' }))
+           .concat(signals.map(s => ({ it: s, kind: 'segnale' })));
+}
+
+function yearsInUse() {
+    const ys = new Set();
+    allItems().forEach(({it}) => { if (it.date) ys.add(parseInt(it.date.slice(0,4), 10)); });
+    const anno = parseInt(document.getElementById('rep_anno').value, 10);
+    if (anno) ys.add(anno);
+    return Array.from(ys).filter(y => y >= 1999);
+}
+
+async function downloadRates() {
+    const status = document.getElementById('cambio-status');
+    const years = yearsInUse();
+    if (years.length === 0) {
+        status.innerHTML = '⚠️ Aggiungi prima delle vendite (o imposta l\'anno d\'imposta): serve sapere quali anni scaricare.';
+        status.style.color = '#fbbf24';
+        return;
+    }
+    status.innerHTML = '⏳ Scaricamento serie storica BCE...';
+    status.style.color = '#fbbf24';
+    const res = await FX.ensureYears(years, (done, tot, y) => {
+        status.innerHTML = `⏳ Scaricamento cambi BCE ${y} (${done + 1}/${tot})...`;
+    });
+    renderProducts(); renderSignals(); refresh();
+    updateRateStatus(res);
+}
+
+function updateRateStatus(res) {
+    const status = document.getElementById('cambio-status');
+    const cov = FX.coverage();
+    const items = allItems();
+    let missing = 0, approx = 0;
+    items.forEach(({it}) => {
+        const r = rateFor(it.date);
+        if (r.rate == null) missing++;
+        else if (r.source === 'BCE_PREC') approx++;
+    });
+
+    let msg = '';
+    if (cov.observations === 0) {
+        msg = '⚠️ Nessun cambio BCE in memoria. Clicca "Scarica / aggiorna cambi BCE".';
+        status.style.color = '#fbbf24';
+    } else {
+        msg = `✅ ${cov.observations} rilevazioni BCE in memoria (anni: ${cov.years.join(', ')})`;
+        status.style.color = '#22c55e';
+    }
+    if (res && res.downloaded === 0 && res.years.length > 0) {
+        msg = '❌ Download non riuscito: nessun dato ricevuto dalla BCE. Controlla la connessione, oppure usa il cambio unico manuale (e dichiaralo al commercialista).';
+        status.style.color = '#ef4444';
+    }
+    if (items.length > 0) {
+        if (missing > 0) {
+            msg += `<br><span style="color:#ef4444;">❌ ${missing} vendite senza cambio: i totali in EURO sono incompleti.</span>`;
+        } else if (approx > 0) {
+            msg += `<br><span style="color:#fbbf24;">ℹ️ ${approx} vendite cadono in giorni non quotati (weekend/festivi): usata l'ultima rilevazione BCE precedente, come da prassi.</span>`;
+        }
+    }
+    status.innerHTML = msg;
+}
+
+function showRateDetail() {
+    const box = document.getElementById('cambio-detail');
+    const items = allItems();
+    if (items.length === 0) { box.innerHTML = '<p style="font-size:12px;color:#94a3b8;">Nessuna vendita inserita.</p>'; return; }
+    const seen = {};
+    items.forEach(({it}) => {
+        const r = rateFor(it.date);
+        const key = (rateMode === 'fixed') ? 'fisso' : (rateMode === 'monthly' ? (it.date || '').slice(0,7) : it.date);
+        if (!seen[key]) seen[key] = { key, r, n: 0 };
+        seen[key].n++;
+    });
+    const rows = Object.values(seen).sort((a,b) => String(a.key).localeCompare(String(b.key)));
+    box.innerHTML = `<table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:12px;">
+        <tr style="background:#334155;"><th style="padding:6px;text-align:left;">Riferimento</th><th style="padding:6px;text-align:right;">Cambio</th><th style="padding:6px;text-align:left;">Fonte</th><th style="padding:6px;text-align:right;">Vendite</th></tr>
+        ${rows.map(x => `<tr style="border-bottom:1px solid #334155;">
+            <td style="padding:6px;">${x.key || '—'}</td>
+            <td style="padding:6px;text-align:right;font-family:monospace;">${x.r.rate != null ? x.r.rate.toFixed(4) : '—'}</td>
+            <td style="padding:6px;">${x.r.rate != null ? FX.sourceLabel(x.r.source, x.r.refDate) : '<span style="color:#ef4444;">non disponibile</span>'}</td>
+            <td style="padding:6px;text-align:right;">${x.n}</td></tr>`).join('')}
+    </table>`;
+}
+
+function modeLabel() {
+    if (rateMode === 'fixed') { const v = getFixedRate(); return `cambio unico manuale ${v ? v.toFixed(4) : '—'}`; }
+    if (rateMode === 'monthly') return 'cambio medio mensile BCE (media delle rilevazioni del mese)';
+    return 'cambio BCE del giorno della vendita';
+}
+
+// ============ PERSISTENZA LOCALE ============
+const LS_KEY = 'mql5calc_state_v1';
+
+function saveState() {
+    try {
+        localStorage.setItem(LS_KEY, JSON.stringify({
+            products, signals, rateMode,
+            fixed: document.getElementById('cambio_eur').value,
+            nome: document.getElementById('rep_nome').value,
+            anno: document.getElementById('rep_anno').value,
+            nota: document.getElementById('rep_nota').value
+        }));
+    } catch (e) { /* quota piena: si continua senza salvare */ }
+}
+
+function loadState() {
+    let st = null;
+    try { st = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) {}
+    if (st) {
+        products = Array.isArray(st.products) ? st.products : [];
+        signals = Array.isArray(st.signals) ? st.signals : [];
+        if (st.fixed) document.getElementById('cambio_eur').value = st.fixed;
+        document.getElementById('rep_nome').value = st.nome || '';
+        document.getElementById('rep_anno').value = st.anno || String(new Date().getFullYear() - 1);
+        document.getElementById('rep_nota').value = st.nota || '';
+        rateMode = st.rateMode || 'daily';
+    } else {
+        document.getElementById('rep_anno').value = String(new Date().getFullYear() - 1);
+    }
+    setRateMode(rateMode);
+}
+
+const PRODUCT_OPTIONS = [
+    'BTC AutoTrader',
+    'BTC AutoTrader 1 month rent',
+    'XAU AutoTrader',
+    'XAU AutoTrader 3 months rent',
+    'Gold Hydra Bot',
+    'Gold Hydra Bot 6 months rent'
+];
+
+function addProduct() {
+    products.push({ date: '', product: 'BTC AutoTrader', lordo: 499, blocked: false });
+    renderProducts(); saveState();
+}
+
+function addSignal() {
+    signals.push({ date: '', signal: 'BTC AUTOTRADER', lordo: 30, blocked: false });
+    renderSignals(); saveState();
+}
+
+// Riga valorizzata: lordo/netto in USD + conversione in EUR al cambio della sua data.
+// La conversione NON viene mai memorizzata: si ricalcola sempre da data + modalita'.
+function valueOf(it) {
+    const lordo = it.lordo || 0;
+    // Se disponibile si usa il netto realmente accreditato da MQL5: il lordo e'
+    // ricostruito (netto/0.8) e arrotondato, quindi lordo*0.8 puo' differire di
+    // qualche centesimo dall'importo davvero incassato.
+    const netto = (typeof it.nettoOriginale === 'number' && isFinite(it.nettoOriginale))
+        ? it.nettoOriginale : lordo * 0.8;
+    const r = rateFor(it.date);
+    return {
+        lordo, netto, r,
+        lordoEur: r.rate != null ? lordo * r.rate : null,
+        nettoEur: r.rate != null ? netto * r.rate : null
+    };
+}
+
+function renderProducts() {
+    const list = document.getElementById('products-list');
+    list.innerHTML = '';
+    products.forEach((p, i) => {
+        const v = valueOf(p);
+        const div = document.createElement('div');
+        div.className = 'row' + (p.blocked ? ' blocked' : '');
+        div.innerHTML = `
+            <input type="date" value="${p.date}" onchange="products[${i}].date=this.value; renderProducts(); saveState(); refresh()">
+            <select onchange="products[${i}].product=this.value; renderProducts(); saveState()">
+                ${PRODUCT_OPTIONS.map(k => `<option value="${k}" ${p.product===k?'selected':''}>${k}</option>`).join('')}
+                ${PRODUCT_OPTIONS.indexOf(p.product) === -1 && p.product ? `<option value="${p.product}" selected>${p.product}</option>` : ''}
+            </select>
+            <input type="number" step="0.01" value="${v.lordo}" onchange="products[${i}].lordo=parseFloat(this.value)||0; delete products[${i}].nettoOriginale; renderProducts(); saveState(); refresh()">
+            <span>$${v.netto.toFixed(2)}</span>
+            <span>${rateBadge(v.r)}</span>
+            <span>${v.lordoEur != null ? '€' + v.lordoEur.toFixed(2) : '<span style="color:#f87171">—</span>'}</span>
+            <input type="checkbox" ${p.blocked?'checked':''} title="Fondi bloccati" onchange="products[${i}].blocked=this.checked; renderProducts(); saveState(); refresh()">
+            <button onclick="products.splice(${i},1); renderProducts(); saveState(); refresh()" class="danger">×</button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function renderSignals() {
+    const list = document.getElementById('signals-list');
+    list.innerHTML = '';
+    signals.forEach((s, i) => {
+        const v = valueOf(s);
+        const div = document.createElement('div');
+        div.className = 'row' + (s.blocked ? ' blocked' : '');
+        div.innerHTML = `
+            <input type="date" value="${s.date}" onchange="signals[${i}].date=this.value; renderSignals(); saveState(); refresh()">
+            <select onchange="signals[${i}].signal=this.value; renderSignals(); saveState()">
+                <option value="BTC AUTOTRADER" ${s.signal==='BTC AUTOTRADER'?'selected':''}>BTC AUTOTRADER</option>
+                <option value="XAU AUTOTRADER" ${s.signal==='XAU AUTOTRADER'?'selected':''}>XAU AUTOTRADER</option>
+                ${['BTC AUTOTRADER','XAU AUTOTRADER'].indexOf(s.signal) === -1 && s.signal ? `<option value="${s.signal}" selected>${s.signal}</option>` : ''}
+            </select>
+            <input type="number" step="0.01" value="${v.lordo}" onchange="signals[${i}].lordo=parseFloat(this.value)||0; delete signals[${i}].nettoOriginale; renderSignals(); saveState(); refresh()">
+            <span>$${v.netto.toFixed(2)}</span>
+            <span>${rateBadge(v.r)}</span>
+            <span>${v.lordoEur != null ? '€' + v.lordoEur.toFixed(2) : '<span style="color:#f87171">—</span>'}</span>
+            <input type="checkbox" ${s.blocked?'checked':''} title="Fondi bloccati" onchange="signals[${i}].blocked=this.checked; renderSignals(); saveState(); refresh()">
+            <button onclick="signals.splice(${i},1); renderSignals(); saveState(); refresh()" class="danger">×</button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function clearAll(type) {
+    if (!confirm('Sei sicuro?')) return;
+    if (type === 'products') { products = []; renderProducts(); }
+    else { signals = []; renderSignals(); }
+    saveState(); refresh();
+}
+
+function getAnno() {
+    const v = parseInt(document.getElementById('rep_anno').value, 10);
+    return isFinite(v) ? v : null;
+}
+
+// Totali. `soloAnno` = true limita il calcolo all'anno d'imposta selezionato.
+// Le righe senza cambio disponibile NON entrano nei totali in EURO e vengono
+// contate a parte: un totale incompleto deve essere visibile, non silenzioso.
+function calcTotals(soloAnno) {
+    const anno = getAnno();
+    const inScope = it => !soloAnno || (it.date && parseInt(it.date.slice(0,4), 10) === anno);
+
+    const acc = {
+        pLordoD: 0, pLordoB: 0, sLordoD: 0, sLordoB: 0,
+        pNettoD: 0, pNettoB: 0, sNettoD: 0, sNettoB: 0,
+        pEurD: 0, pEurB: 0, sEurD: 0, sEurB: 0,
+        pEurNettoD: 0, pEurNettoB: 0, sEurNettoD: 0, sEurNettoB: 0,
+        usdConvertito: 0, missing: [], fuoriAnno: 0, righe: 0
+    };
+
+    function add(it, kind) {
+        if (!inScope(it)) { if (it.date || soloAnno) acc.fuoriAnno++; return; }
+        acc.righe++;
+        const v = valueOf(it);
+        if (kind === 'p') {
+            if (it.blocked) { acc.pLordoB += v.lordo; acc.pNettoB += v.netto; }
+            else { acc.pLordoD += v.lordo; acc.pNettoD += v.netto; }
+        } else {
+            if (it.blocked) { acc.sLordoB += v.lordo; acc.sNettoB += v.netto; }
+            else { acc.sLordoD += v.lordo; acc.sNettoD += v.netto; }
+        }
+
+        if (v.lordoEur == null) {
+            acc.missing.push({ date: it.date, nome: it.product || it.signal, lordo: v.lordo });
+            return;
+        }
+        acc.usdConvertito += v.lordo;
+        if (kind === 'p') {
+            if (it.blocked) { acc.pEurB += v.lordoEur; acc.pEurNettoB += v.nettoEur; }
+            else { acc.pEurD += v.lordoEur; acc.pEurNettoD += v.nettoEur; }
+        } else {
+            if (it.blocked) { acc.sEurB += v.lordoEur; acc.sEurNettoB += v.nettoEur; }
+            else { acc.sEurD += v.lordoEur; acc.sEurNettoD += v.nettoEur; }
+        }
+    }
+
+    products.forEach(p => add(p, 'p'));
+    signals.forEach(s => add(s, 's'));
+
+    const totD = acc.pLordoD + acc.sLordoD;
+    const totB = acc.pLordoB + acc.sLordoB;
+    const totTutto = totD + totB;
+    const nettoD = acc.pNettoD + acc.sNettoD;
+    const nettoB = acc.pNettoB + acc.sNettoB;
+    const eurD = acc.pEurD + acc.sEurD;
+    const eurB = acc.pEurB + acc.sEurB;
+    const eurTot = eurD + eurB;
+    const eurNettoD = acc.pEurNettoD + acc.sEurNettoD;
+    const eurNettoB = acc.pEurNettoB + acc.sEurNettoB;
+
+    return {
+        anno,
+        pLordoD: acc.pLordoD, pNettoD: acc.pNettoD,
+        pLordoB: acc.pLordoB, pNettoB: acc.pNettoB,
+        sLordoD: acc.sLordoD, sNettoD: acc.sNettoD,
+        sLordoB: acc.sLordoB, sNettoB: acc.sNettoB,
+        totD, totB, totTutto,
+        totNettoD: nettoD, totNettoB: nettoB, totNettoTutto: nettoD + nettoB,
+        totEurD_lordo: eurD, totEurD_netto: eurNettoD,
+        totEurB_lordo: eurB, totEurB_netto: eurNettoB,
+        totEur_lordo: eurTot, totEur_netto: eurNettoD + eurNettoB,
+        // cambio medio ponderato effettivamente applicato (solo sulle righe convertite)
+        cambioMedio: acc.usdConvertito > 0 ? eurTot / acc.usdConvertito : null,
+        missing: acc.missing, fuoriAnno: acc.fuoriAnno, righe: acc.righe
+    };
+}
+
+function renderSummary() {
+    const t = calcTotals(true);
+    const tAll = calcTotals(false);
+    const anno = t.anno;
+
+    const warnMissing = t.missing.length > 0 ? `
+        <div class="alert"><strong>⚠️ ${t.missing.length} vendite senza cambio disponibile</strong> — non sono incluse nei totali in EURO
+        (${t.missing.map(m => (m.date || 'senza data') + ' $' + m.lordo.toFixed(2)).join(', ')}).<br>
+        Scarica i cambi BCE, oppure imposta una data valida su quelle righe.</div>` : '';
+
+    const warnFuori = t.fuoriAnno > 0 ? `
+        <div style="background:#78350f;border:1px solid #f59e0b;color:#fde68a;padding:10px 14px;border-radius:8px;margin:12px 0;font-size:13px;">
+        ℹ️ ${t.fuoriAnno} righe non appartengono all'anno ${anno} (o non hanno data) e sono escluse da questo riepilogo e dal PDF.
+        Totale complessivo di tutte le righe caricate: <strong>$${tAll.totTutto.toFixed(2)}</strong>.</div>` : '';
+
+    document.getElementById('summary').innerHTML = `
+        ${warnMissing}${warnFuori}
+        <div class="totali">
+            <h3>📦 Prodotti — anno ${anno}</h3>
+            <div class="tot-row"><span>✅ Disponibili:</span><span>Lordo $${t.pLordoD.toFixed(2)} | Netto $${t.pNettoD.toFixed(2)}</span></div>
+            <div class="tot-row"><span>🔒 Bloccati:</span><span>Lordo $${t.pLordoB.toFixed(2)} | Netto $${t.pNettoB.toFixed(2)}</span></div>
+        </div>
+        <div class="totali">
+            <h3>📡 Segnali — anno ${anno}</h3>
+            <div class="tot-row"><span>✅ Disponibili:</span><span>Lordo $${t.sLordoD.toFixed(2)} | Netto $${t.sNettoD.toFixed(2)}</span></div>
+            <div class="tot-row"><span>🔒 Bloccati:</span><span>Lordo $${t.sLordoB.toFixed(2)} | Netto $${t.sNettoB.toFixed(2)}</span></div>
+        </div>
+        <div class="totali" style="background: linear-gradient(135deg, #047857, #065f46);">
+            <h3>🎯 TOTALE ${anno} in USD</h3>
+            <div class="tot-row"><span>✅ Disponibili:</span><span>Lordo $${t.totD.toFixed(2)} | Netto $${t.totNettoD.toFixed(2)}</span></div>
+            <div class="tot-row"><span>🔒 Bloccati:</span><span>Lordo $${t.totB.toFixed(2)} | Netto $${t.totNettoB.toFixed(2)}</span></div>
+            <div class="tot-row big"><span>TOTALE COMPLESSIVO:</span><span>Lordo $${t.totTutto.toFixed(2)} | Netto $${t.totNettoTutto.toFixed(2)}</span></div>
+            <div class="tot-row"><span>Commissione MQL5 (20%):</span><span>$${(t.totTutto * 0.20).toFixed(2)}</span></div>
+        </div>
+        <div class="totali" style="background: linear-gradient(135deg, #b45309, #92400e);">
+            <h3>💱 CONVERSIONE IN EURO</h3>
+            <div style="background:rgba(0,0,0,0.25);padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:12px;">
+                Metodo: <strong>${modeLabel()}</strong>${t.cambioMedio ? ` — cambio medio ponderato applicato: <strong>${t.cambioMedio.toFixed(4)}</strong>` : ''}
+            </div>
+            <div class="tot-row"><span>✅ Lordo disponibili:</span><span>€ ${t.totEurD_lordo.toFixed(2)}</span></div>
+            <div class="tot-row"><span>✅ Netto disponibili:</span><span>€ ${t.totEurD_netto.toFixed(2)}</span></div>
+            <div class="tot-row"><span>🔒 Lordo bloccati:</span><span>€ ${t.totEurB_lordo.toFixed(2)}</span></div>
+            <div class="tot-row big"><span>TOTALE LORDO EUR:</span><span>€ ${t.totEur_lordo.toFixed(2)}</span></div>
+            <div class="tot-row big"><span>TOTALE NETTO EUR:</span><span>€ ${t.totEur_netto.toFixed(2)}</span></div>
+        </div>
+    `;
+}
+
+function generatePDF() {
+    const anno = getAnno();
+    if (!anno) { alert("Imposta l'anno d'imposta nel riquadro \"Dati del report\"."); return; }
+    const t = calcTotals(true);
+    if (t.righe === 0) { alert(`Nessuna vendita con data nell'anno ${anno}.`); return; }
+    if (t.missing.length > 0) {
+        const ok = confirm(`${t.missing.length} vendite non hanno un cambio disponibile.\n\nSe procedi, i totali in EURO del PDF saranno INCOMPLETI e il documento riportera' un avviso in evidenza.\n\nConsiglio: annulla, clicca "Scarica / aggiorna cambi BCE" e riprova.\n\nProcedere lo stesso?`);
+        if (!ok) return;
+    }
+
+    const nome = (document.getElementById('rep_nome').value || '').trim();
+    const nota = (document.getElementById('rep_nota').value || '').trim();
+    const today = new Date().toLocaleDateString('it-IT');
+    const inAnno = it => it.date && parseInt(it.date.slice(0,4), 10) === anno;
+    const sortByDate = (a,b) => a.date.localeCompare(b.date);
+    const sortedP = products.filter(inAnno).sort(sortByDate);
+    const sortedS = signals.filter(inAnno).sort(sortByDate);
+
+    const lordoEur = t.totEur_lordo;
+    const nettoEur = t.totEur_netto;
+    const commEur = lordoEur - nettoEur;
+
+    const rowHtml = (it, nome2) => {
+        const v = valueOf(it);
+        const fonte = v.r.rate != null ? FX.sourceLabel(v.r.source, v.r.refDate) : 'NON DISPONIBILE';
+        const cls = v.r.rate == null ? ' style="background:#fee2e2;"' : '';
+        return `<tr class="${it.blocked?'blocked':''}"${cls}>
+            <td>${it.date}</td><td>${nome2}</td>
+            <td>$${v.lordo.toFixed(2)}</td><td>$${v.netto.toFixed(2)}</td>
+            <td>${v.r.rate != null ? v.r.rate.toFixed(4) : '—'}<br><span style="font-size:9px;color:#555;">${fonte}</span></td>
+            <td>${v.lordoEur != null ? '€' + v.lordoEur.toFixed(2) : '—'}</td>
+            <td>${v.nettoEur != null ? '€' + v.nettoEur.toFixed(2) : '—'}</td>
+            <td>${it.blocked?'bloccato':'disponibile'}</td></tr>`;
+    };
+
+    const sumEur = (arr, f) => arr.reduce((s, it) => { const v = valueOf(it); return s + (v.lordoEur != null ? f(v) : 0); }, 0);
+
+    const avvisoMancanti = t.missing.length > 0 ? `
+        <div class="warn-box">
+            <strong>⚠️ DOCUMENTO INCOMPLETO</strong><br>
+            ${t.missing.length} vendite non hanno un cambio ufficiale disponibile e <strong>non sono incluse negli importi in EURO</strong>:
+            ${t.missing.map(m => (m.date || 'senza data') + ' — $' + m.lordo.toFixed(2)).join('; ')}.
+            Gli importi in dollari restano invece completi.
+        </div>` : '';
+
+    const avvisoAltriAnni = t.fuoriAnno > 0 ? `
+        <p style="font-size:10px;color:#666;margin-top:6px;">Nota: ${t.fuoriAnno} righe presenti nell'applicazione non appartengono all'anno ${anno} e sono state escluse da questo documento.</p>` : '';
+
+    const w = window.open('', '_blank');
+    if (!w) { alert('Il browser ha bloccato la finestra. Consenti i popup per questo sito e riprova.'); return; }
+    w.document.write(`
+    <html><head><meta charset="UTF-8"><title>Riepilogo Compensi MQL5 ${anno}</title>
+    <style>
+    body { font-family: Helvetica, Arial; padding: 30px; color: #1a1a2e; font-size: 11px; }
+    h1 { color: #1a1a2e; border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 4px; }
+    h2 { color: #2563eb; margin-top: 25px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    th { background: #1a1a2e; color: white; padding: 8px; text-align: left; }
+    td { padding: 6px 8px; border-bottom: 1px solid #ddd; }
+    tr.blocked { background: #fef3c7; color: #92400e; }
+    tr.total { background: #e0f2fe; font-weight: bold; }
+    .box { background: #f0f9ff; border-left: 4px solid #2563eb; padding: 15px; margin: 15px 0; }
+    .warn-box { background: #fee2e2; border: 2px solid #dc2626; color: #7f1d1d; padding: 14px; margin: 15px 0; border-radius: 8px; }
+    .caf-box { background: #fef9c3; border: 2px solid #ca8a04; padding: 18px; margin: 20px 0; border-radius: 8px; }
+    .caf-box h3 { color: #854d0e; margin: 0 0 10px 0; font-size: 14px; }
+    .caf-box p { margin: 6px 0; line-height: 1.5; }
+    .key-box { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 25px 0; }
+    .key-card { padding: 20px; border-radius: 10px; text-align: center; }
+    .key-card.lordo { background: linear-gradient(135deg, #1e40af, #2563eb); color: white; }
+    .key-card.netto { background: linear-gradient(135deg, #15803d, #16a34a); color: white; }
+    .key-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; }
+    .key-card .amount { font-size: 22px; font-weight: bold; margin: 8px 0 4px 0; }
+    .key-card .sub { font-size: 10px; opacity: 0.85; }
+    @media print { body { padding: 15px; } .key-card, .caf-box, .warn-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    </style></head><body>
+
+    <h1>Riepilogo Compensi MQL5 — Anno ${anno}</h1>
+    <p style="margin-top: 0; color: #555;">${nome ? '<strong>' + nome + '</strong> &nbsp;·&nbsp; ' : ''}Documento generato il ${today}</p>
+
+    ${avvisoMancanti}
+
+    <div class="caf-box">
+        <h3>📋 Inquadramento fiscale</h3>
+        <p><strong>Tipologia reddito:</strong> Prestazione di lavoro autonomo occasionale (art. 67, c. 1, lett. l, TUIR)</p>
+        <p><strong>Quadro 730:</strong> Quadro D — rigo D5 (altri redditi di lavoro autonomo non esercitato abitualmente)</p>
+        <p><strong>Soggetto erogante:</strong> MetaQuotes Ltd (piattaforma MQL5.com — Cipro)</p>
+        <p><strong>Ritenuta d'acconto:</strong> non applicata (committente non residente, no sostituto d'imposta italiano)</p>
+        ${nota ? `<p style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed #ca8a04;"><em>${nota.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</em></p>` : ''}
+    </div>
+
+    <div class="box"><strong>Nota di lettura:</strong> il <b>LORDO</b> è il prezzo di vendita al momento della transazione. Il <b>NETTO</b> è l'importo accreditato all'autore dopo la commissione del 20% trattenuta da MQL5. Le righe evidenziate indicano operazioni con fondi non ancora disponibili (lock).</div>
+
+    <h2>📦 Vendite prodotti (${sortedP.length})</h2>
+    <table><tr><th>Data</th><th>Prodotto</th><th>Lordo USD</th><th>Netto USD</th><th>Cambio (1 USD = X EUR)</th><th>Lordo EUR</th><th>Netto EUR</th><th>Stato</th></tr>
+    ${sortedP.map(p => rowHtml(p, p.product)).join('')}
+    <tr class="total"><td colspan="2">TOTALE PRODOTTI</td><td>$${(t.pLordoD+t.pLordoB).toFixed(2)}</td><td>$${(t.pNettoD+t.pNettoB).toFixed(2)}</td><td>—</td><td>€${sumEur(sortedP, v=>v.lordoEur).toFixed(2)}</td><td>€${sumEur(sortedP, v=>v.nettoEur).toFixed(2)}</td><td></td></tr>
+    </table>
+
+    <h2>📡 Signal subscriptions (${sortedS.length})</h2>
+    <table><tr><th>Data</th><th>Segnale</th><th>Lordo USD</th><th>Netto USD</th><th>Cambio (1 USD = X EUR)</th><th>Lordo EUR</th><th>Netto EUR</th><th>Stato</th></tr>
+    ${sortedS.map(s => rowHtml(s, s.signal)).join('')}
+    <tr class="total"><td colspan="2">TOTALE SEGNALI</td><td>$${(t.sLordoD+t.sLordoB).toFixed(2)}</td><td>$${(t.sNettoD+t.sNettoB).toFixed(2)}</td><td>—</td><td>€${sumEur(sortedS, v=>v.lordoEur).toFixed(2)}</td><td>€${sumEur(sortedS, v=>v.nettoEur).toFixed(2)}</td><td></td></tr>
+    </table>
+
+    <h2>💱 Metodo di conversione valutaria</h2>
+    <div class="box" style="background:#fef9c3;border-color:#ca8a04;">
+        <p style="margin:0 0 8px 0;"><strong>Criterio applicato:</strong> ${modeLabel()}</p>
+        <p style="margin:0 0 8px 0;"><strong>Fonte:</strong> tassi di riferimento della Banca Centrale Europea, gli stessi pubblicati dalla Banca d'Italia (tassidicambio.bancaditalia.it). Per le date in cui la BCE non effettua rilevazioni (sabato, domenica e festivi TARGET) viene utilizzata l'ultima rilevazione precedente, indicata riga per riga.</p>
+        <p style="margin:0;"><strong>Cambio medio ponderato effettivamente applicato:</strong> ${t.cambioMedio ? t.cambioMedio.toFixed(4) + ' EUR per 1 USD' : 'n/d'}</p>
+    </div>
+
+    <h2>📊 Riepilogo USD</h2>
+    <table>
+    <tr><th>Categoria</th><th>Lordo USD</th><th>Netto USD</th></tr>
+    <tr><td>Disponibili (fondi ricevuti)</td><td>$${t.totD.toFixed(2)}</td><td>$${t.totNettoD.toFixed(2)}</td></tr>
+    <tr class="blocked"><td>Bloccati (fondi non ancora ricevuti)</td><td>$${t.totB.toFixed(2)}</td><td>$${t.totNettoB.toFixed(2)}</td></tr>
+    <tr><td>Commissione MQL5 (20%)</td><td colspan="2">$${(t.totTutto * 0.20).toFixed(2)}</td></tr>
+    </table>
+
+    <h2>💱 Conversione in EURO</h2>
+    <table>
+    <tr><th>Categoria</th><th>USD</th><th>EUR</th></tr>
+    <tr><td>TOTALE LORDO (compenso pattuito)</td><td>$${t.totTutto.toFixed(2)}</td><td><strong>€ ${lordoEur.toFixed(2)}</strong></td></tr>
+    <tr><td>Commissione MQL5 trattenuta (20%)</td><td>$${(t.totTutto * 0.20).toFixed(2)}</td><td>€ ${commEur.toFixed(2)}</td></tr>
+    <tr><td>TOTALE NETTO (effettivamente accreditato)</td><td>$${t.totNettoTutto.toFixed(2)}</td><td><strong>€ ${nettoEur.toFixed(2)}</strong></td></tr>
+    </table>
+
+    <h2>🎯 Importi per la dichiarazione</h2>
+    <div class="key-box">
+        <div class="key-card lordo">
+            <div class="label">Compenso Lordo</div>
+            <div class="amount">€ ${lordoEur.toFixed(2)}</div>
+            <div class="sub">prezzo di vendita pattuito</div>
+        </div>
+        <div class="key-card netto">
+            <div class="label">Imponibile Netto</div>
+            <div class="amount">€ ${nettoEur.toFixed(2)}</div>
+            <div class="sub">dopo commissione piattaforma 20%</div>
+        </div>
+    </div>
+
+    <div class="caf-box" style="background: #eff6ff; border-color: #2563eb;">
+        <h3 style="color: #1e40af;">💡 Indicazione per il CAF</h3>
+        <p>La <strong>commissione del 20%</strong> trattenuta da MQL5 (€ ${commEur.toFixed(2)}) costituisce <strong>spesa inerente</strong> alla produzione del reddito occasionale, deducibile ai sensi dell'art. 71, c. 2, TUIR.</p>
+        <p style="margin-top: 10px;">A seconda della prassi del CAF può essere indicato:</p>
+        <p>&nbsp;&nbsp;<strong>Opzione A:</strong> compenso lordo € ${lordoEur.toFixed(2)} con costo deducibile € ${commEur.toFixed(2)} → imponibile € ${nettoEur.toFixed(2)}</p>
+        <p>&nbsp;&nbsp;<strong>Opzione B:</strong> direttamente l'importo netto € ${nettoEur.toFixed(2)} come compenso</p>
+    </div>
+
+    <p style="margin-top: 30px; font-size: 9px; color: #888; border-top: 1px solid #ddd; padding-top: 10px;">
+    Documento riepilogativo generato da MQL5 Proventi Calculator. I dati di dettaglio delle singole transazioni provengono dall'area "Payments" del profilo personale MQL5.com. Documento indicativo, da validare con il proprio consulente fiscale.${avvisoAltriAnni}
+    </p>
+
+    <scr`+`ipt>setTimeout(()=>window.print(),500);</scr`+`ipt>
+    </body></html>`);
+    w.document.close();
+}
+
+loadState();
+renderProducts();
+renderSignals();
+updateRateStatus();
+
+</script>
+
+</body>
+</html>
