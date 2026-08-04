@@ -707,6 +707,17 @@
       comment:    ['comment', 'commento']
     };
 
+    // Nell'export HTML di MT5 la riga di una posizione contiene una cella in piu'
+    // rispetto all'intestazione: il commento (il nome dell'EA) inserito subito
+    // dopo la colonna Type. Tutto cio' che segue slitta, e leggere il profitto
+    // all'indice dell'intestazione significa leggere un prezzo.
+    // L'indice effettivo si ricalcola riga per riga dallo scarto di lunghezza.
+    function indiceEffettivo(row, headerLen, idx, idxUltimoFisso) {
+      const delta = (row ? row.length : 0) - headerLen;
+      if (!(delta > 0) || idx <= idxUltimoFisso) return idx;
+      return idx + delta;
+    }
+
     function mappaColonne(headerRow, predefinite) {
       const idx = Object.assign({}, predefinite);
       if (!Array.isArray(headerRow)) return idx;
@@ -811,6 +822,7 @@
             for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Positions') { posHeader = i + 1; posStart = i + 2; break; } }
             const colPos = mappaColonne(posHeader >= 0 ? data[posHeader] : null,
               { symbol: 2, type: 3, volume: 4, commission: 10, swap: 11, profit: 12 });
+            const posHeaderLen = (posHeader >= 0 && data[posHeader]) ? data[posHeader].length : 0;
             
             const trades = [];
             let grossProfit = 0, grossLoss = 0, wins = 0, losses = 0;
@@ -837,14 +849,15 @@
                   // commissioni e swap sono gia' negativi quando sono costi.
                   // Sono le voci che fanno quadrare il saldo del conto, e sono
                   // costi inerenti che riducono la plusvalenza.
-                  const profitRaw = numero(row[colPos.profit]);
-                  const commission = numero(row[colPos.commission]);
-                  const swap = numero(row[colPos.swap]);
+                  const iEff = k => indiceEffettivo(row, posHeaderLen, k, colPos.type);
+                  const profitRaw = numero(row[iEff(colPos.profit)]);
+                  const commission = numero(row[iEff(colPos.commission)]);
+                  const swap = numero(row[iEff(colPos.swap)]);
                   const profit = profitRaw + commission + swap;
                   const symbol = String(row[colPos.symbol] || '');
                   const type = String(row[colPos.type] || '').toLowerCase();
                   if (symbol && (type === 'buy' || type === 'sell')) {
-                    trades.push({ date: tradeDate, profit, profitRaw, commission, swap, symbol, volume: numero(row[colPos.volume]) });
+                    trades.push({ date: tradeDate, profit, profitRaw, commission, swap, symbol, volume: numero(row[iEff(colPos.volume)]) });
                     totalProfitRaw += profitRaw; totalCommission += commission; totalSwap += swap;
                     if (profit > 0) { grossProfit += profit; wins++; }
                     else if (profit < 0) { grossLoss += profit; losses++; }
