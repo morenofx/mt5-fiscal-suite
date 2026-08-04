@@ -40,6 +40,29 @@ modo in cui viene costruito quello ufficiale.
 Una richiesta per anno scarica l'intera serie storica; i cambi restano in cache locale
 (non cambiano mai), quindi dopo la prima apertura le app funzionano anche offline.
 
+## Verifica dati
+
+Entrambe le app eseguono controlli automatici sui dati caricati e mostrano l'esito, che finisce
+anche sui documenti generati.
+
+Nell'analyzer il controllo portante è la **quadratura contabile**: per ogni conto
+
+```
+saldo finale del report = movimenti di cassa + risultato dei trade
+```
+
+Se non torna, il report non è stato letto per intero o qualcosa è stato classificato male. È il
+controllo che ha rivelato l'assenza di commissioni e swap dal calcolo: con il solo `Profit`
+l'identità falliva su 7 conti su 9, includendo `Commission` e `Swap` chiude a zero su tutti.
+Gli altri controlli: continuità dei saldi fra anni, conti con giacenza ma senza report negli anni
+successivi, report che non partono da saldo zero, qualità dei cambi applicati, movimenti
+classificati solo dal segno, broker non riconosciuto, quadratura RT21 − RT22 = RT23, bonus esclusi,
+anni non ancora chiusi.
+
+Nel calculator: righe duplicate (tabella incollata due volte), righe senza data o fuori anno,
+cambi mancanti, lordo non coerente col netto accreditato, righe inserite a mano, propri acquisti
+finiti fra le vendite, date future.
+
 ## Criterio di conversione, per app
 
 - **Analyzer:** ogni trade al cambio BCE del giorno di chiusura; saldi iniziali e finali al cambio

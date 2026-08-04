@@ -233,6 +233,9 @@
         <div class="stats-grid" id="totalStats"></div>
       </div>
 
+      <!-- Verifica dati -->
+      <div id="verificaSection" class="card"></div>
+
       <!-- Grafici -->
       <div class="card">
         <div class="card-title">📈 Grafici</div>
@@ -692,6 +695,7 @@
             
             const trades = [];
             let grossProfit = 0, grossLoss = 0, wins = 0, losses = 0;
+            let totalCommission = 0, totalSwap = 0, totalProfitRaw = 0;
             let valoreIniziale = 0, valoreFinale = 0;
             
             if (posStart !== -1) {
@@ -710,11 +714,19 @@
                 }
                 if (!tradeDate || isNaN(tradeDate.getTime())) continue;
                 try {
-                  const profit = parseFloat(row[12]) || 0;
+                  // Il risultato della posizione e' Profit + Commissione + Swap:
+                  // commissioni e swap sono gia' negativi quando sono costi.
+                  // Sono le voci che fanno quadrare il saldo del conto, e sono
+                  // costi inerenti che riducono la plusvalenza.
+                  const profitRaw = parseFloat(row[12]) || 0;
+                  const commission = parseFloat(row[10]) || 0;
+                  const swap = parseFloat(row[11]) || 0;
+                  const profit = profitRaw + commission + swap;
                   const symbol = String(row[2] || '');
                   const type = String(row[3] || '').toLowerCase();
                   if (symbol && (type === 'buy' || type === 'sell')) {
-                    trades.push({ date: tradeDate, profit, symbol, volume: parseFloat(String(row[4]).replace(',','.')) || 0 });
+                    trades.push({ date: tradeDate, profit, profitRaw, commission, swap, symbol, volume: parseFloat(String(row[4]).replace(',','.')) || 0 });
+                    totalProfitRaw += profitRaw; totalCommission += commission; totalSwap += swap;
                     if (profit > 0) { grossProfit += profit; wins++; }
                     else if (profit < 0) { grossLoss += profit; losses++; }
                   }
@@ -738,12 +750,16 @@
                   }
                   if (!td || isNaN(td.getTime())) continue;
                   try {
-                    const p = parseFloat(row[11]) || 0;
+                    const praw = parseFloat(row[11]) || 0;
+                    const comm = (parseFloat(row[8]) || 0) + (parseFloat(row[9]) || 0);
+                    const sw = parseFloat(row[10]) || 0;
+                    const p = praw + comm + sw;
                     const t = String(row[3] || '').toLowerCase();
                     const d = String(row[4] || '').toLowerCase();
                     const sym = String(row[2] || '');
                     if (sym && (t === 'buy' || t === 'sell') && d === 'out') {
-                      trades.push({ date: td, profit: p, symbol: sym, volume: parseFloat(row[5]) || 0 });
+                      trades.push({ date: td, profit: p, profitRaw: praw, commission: comm, swap: sw, symbol: sym, volume: parseFloat(row[5]) || 0 });
+                      totalProfitRaw += praw; totalCommission += comm; totalSwap += sw;
                       if (p > 0) { grossProfit += p; wins++; } else if (p < 0) { grossLoss += p; losses++; }
                     }
                   } catch (e) {}
@@ -780,12 +796,13 @@
                 }
                 
                 // 3. Depositi reali (verso il conto dalla banca/carta)
-                if (/\b(cc\s+deposit|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2})\b/.test(c)) {
+                // Circuiti di pagamento: sono depositi reali dall'esterno, non giroconti
+                if (/\b(cc\s+deposit|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2}|paypal|skrill|neteller|sepa|bonifico|bank\s+in|visa|mastercard|maestro|card\s+payment)\b/.test(c)) {
                     return 'real_deposit';
                 }
                 
                 // 4. Prelievi reali (dal conto verso banca)
-                if (/\b(wdl|withdrawal|wire\s+out|pay\s+out|withdraw)\b/.test(c)) {
+                if (/\b(wdl|withdrawal|wire\s+out|pay\s+out|withdraw|payout|refund\s+to)\b/.test(c)) {
                     return 'real_withdrawal';
                 }
                 
@@ -823,10 +840,15 @@
                 if (!isCredit && !isBalanceOp) continue;
                 
                 let category = 'unclassified';
+                let categoryGuessed = false;
                 if (isCredit) {
                     category = 'bonus';
                 } else if (isBalanceOp) {
                     category = classifyBalanceComment(comment, amount);
+                    // Nessuna parola chiave riconosciuta: la classificazione e' solo
+                    // dedotta dal segno dell'importo. Va segnalata, perche' distinguere
+                    // un deposito reale da un giroconto interno cambia il quadro RW.
+                    categoryGuessed = !/\b(swap|pnl|rollover|adjust|correct|interest|autotrf|transfer\s+(in|out|from|to)|tfr|internal|cc\s+deposit|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2}|paypal|skrill|neteller|sepa|bonifico|bank\s+in|visa|mastercard|maestro|card\s+payment|wdl|withdrawal|wire\s+out|pay\s+out|withdraw|payout|refund\s+to)\b/.test(comment);
                 }
                 
                 // Aggiorna i contatori in base alla categoria
@@ -840,6 +862,7 @@
                 }
                 
                 entry.category = category;
+                entry.categoryGuessed = categoryGuessed;
                 entry.isCredit = isCredit;
                 entry.isDeposit = (category === 'real_deposit');
                 entry.isWithdrawal = (category === 'real_withdrawal');
@@ -896,6 +919,7 @@
             resolve({
               accountName, accountNumber, company, displayCompany, serverName, currency, countryInfo,
               trades, grossProfit, grossLoss, netProfit: grossProfit + grossLoss,
+              totalCommission, totalSwap, totalProfitRaw,
               wins, losses, valoreIniziale, valoreFinale,
               balanceTimeline, totalDeposits, totalWithdrawals, totalBonusCredits,
               totalInternalIn, totalInternalOut, totalPnlAdj,
@@ -1223,6 +1247,7 @@
           </div>
         </div>`;
       });
+      renderVerifica();
       renderCharts();
     }
 
@@ -1285,6 +1310,192 @@
       }));
     }
 
+    // ==================== VERIFICA DATI ====================
+    // Controlli automatici sui dati caricati. Il piu' importante e' la quadratura
+    // contabile: il saldo finale di ogni conto DEVE essere uguale ai movimenti di
+    // cassa piu' il risultato dei trade. Se non torna, qualcosa non e' stato letto
+    // o e' stato classificato male, e i numeri fiscali non sono affidabili.
+    let ultimaVerifica = null;
+
+    function eseguiVerifiche() {
+      const checks = [];
+      const add = (titolo, esito, dettaglio, righe) => checks.push({ titolo, esito, dettaglio, righe: righe || [] });
+      const anni = Object.keys(yearlyData).sort();
+
+      // --- 1. Quadratura contabile per conto ---
+      const scarti = [];
+      accounts.forEach(a => {
+        const tl = a.balanceTimeline || [];
+        if (tl.length === 0) return;
+        const movimenti = (a.totalDeposits || 0) - (a.totalWithdrawals || 0)
+                        + (a.totalBonusCredits || 0) + (a.totalInternalIn || 0)
+                        - (a.totalInternalOut || 0) + (a.totalPnlAdj || 0);
+        const saldoReport = tl[tl.length - 1].balance;
+        const atteso = movimenti + (a.netProfit || 0);
+        const scarto = saldoReport - atteso;
+        if (Math.abs(scarto) > 0.05) {
+          scarti.push(`conto ${a.accountNumber}: saldo report ${saldoReport.toFixed(2)} ${a.currency}, atteso ${atteso.toFixed(2)} — scarto ${scarto.toFixed(2)}`);
+        }
+      });
+      if (accounts.length === 0) {
+        add('Quadratura contabile dei conti', 'warn', 'Nessun conto caricato.');
+      } else if (scarti.length === 0) {
+        add('Quadratura contabile dei conti', 'ok',
+            `Su tutti i ${accounts.length} conti il saldo finale coincide con movimenti di cassa + risultato dei trade (commissioni e swap inclusi). È il controllo più forte: se torna, il report è stato letto per intero.`);
+      } else {
+        add('Quadratura contabile dei conti', 'error',
+            `${scarti.length} conti non quadrano: il saldo del report non corrisponde a movimenti + trade. Possibile sezione mancante nel file o movimenti non riconosciuti.`, scarti);
+      }
+
+      // --- 2. Continuità dei saldi fra un anno e il successivo ---
+      const salti = [];
+      const perConto = {};
+      anni.forEach(y => Object.values(yearlyData[y].accounts).forEach(a => {
+        (perConto[a.accountNumber] = perConto[a.accountNumber] || []).push({ anno: parseInt(y, 10), a });
+      }));
+      Object.keys(perConto).forEach(n => {
+        const lista = perConto[n].sort((x, z) => x.anno - z.anno);
+        for (let i = 1; i < lista.length; i++) {
+          if (lista[i].anno !== lista[i-1].anno + 1) continue;
+          const fin = lista[i-1].a.valoreFinale, ini = lista[i].a.valoreIniziale;
+          if (Math.abs(fin - ini) > 0.05) {
+            salti.push(`conto ${n}: fine ${lista[i-1].anno} = ${fin.toFixed(2)}, inizio ${lista[i].anno} = ${ini.toFixed(2)}`);
+          }
+        }
+      });
+      add('Continuità dei saldi fra anni', salti.length ? 'error' : 'ok',
+          salti.length ? 'Il saldo di fine anno non coincide con quello di inizio anno successivo.'
+                       : 'Ogni saldo di fine anno coincide con il saldo iniziale dell\'anno dopo.', salti);
+
+      // --- 3. Conti che spariscono pur avendo ancora soldi ---
+      const ultimoAnno = anni.length ? parseInt(anni[anni.length - 1], 10) : null;
+      const mancanti = [];
+      Object.keys(perConto).forEach(n => {
+        const lista = perConto[n].sort((x, z) => x.anno - z.anno);
+        const ult = lista[lista.length - 1];
+        if (ultimoAnno && ult.anno < ultimoAnno && ult.a.valoreFinale > 0.5) {
+          mancanti.push(`conto ${n}: a fine ${ult.anno} aveva ${ult.a.valoreFinale.toFixed(2)} ${ult.a.currency}, ma non ci sono dati per gli anni successivi`);
+        }
+      });
+      add('Copertura di tutti gli anni', mancanti.length ? 'error' : 'ok',
+          mancanti.length ? 'Alcuni conti avevano ancora giacenza ma il report si ferma prima: manca un export, e il quadro RW degli anni successivi sarebbe incompleto.'
+                          : 'Nessun conto interrotto con giacenza residua.', mancanti);
+
+      // --- 4. Il report parte da zero? ---
+      const parziali = [];
+      accounts.forEach(a => {
+        const tl = a.balanceTimeline || [];
+        if (tl.length === 0) return;
+        const primo = tl[0];
+        const saldoPrima = (primo.balance || 0) - (primo.amount || 0);
+        if (saldoPrima > 0.5) {
+          parziali.push(`conto ${a.accountNumber}: alla prima riga del report il saldo era già ${saldoPrima.toFixed(2)} ${a.currency} (${FX.toISO(primo.date)})`);
+        }
+      });
+      add('Il report copre la storia completa del conto', parziali.length ? 'warn' : 'ok',
+          parziali.length ? 'Il report non parte da saldo zero: probabilmente hai esportato un periodo parziale. Riesporta da MT5 con periodo "Tutta la storia" per non perdere operazioni precedenti.'
+                          : 'Ogni conto parte da saldo zero: i report coprono la storia completa.', parziali);
+
+      // --- 5. Qualità dei cambi applicati ---
+      if (fxStats.mancanti > 0) {
+        add('Cambi BCE applicati', 'error',
+            `${fxStats.mancanti} conversioni senza cambio disponibile ($${fxStats.usdNonConvertiti.toFixed(2)} non convertiti): gli importi in euro sono incompleti.`);
+      } else if (fxStats.manuale > 0) {
+        add('Cambi BCE applicati', 'warn',
+            `${fxStats.manuale} conversioni fatte con cambio manuale invece che con la rilevazione BCE del giorno. Va dichiarato al commercialista.`);
+      } else {
+        add('Cambi BCE applicati', 'ok',
+            `${fxStats.bce} conversioni al cambio BCE del giorno` + (fxStats.prec ? `, ${fxStats.prec} con l'ultima rilevazione precedente perché cadono in giorni non quotati (weekend o festivi).` : '.'));
+      }
+
+      // --- 6. Movimenti classificati solo in base al segno ---
+      const dedotti = [];
+      accounts.forEach(a => (a.balanceTimeline || []).forEach(e => {
+        if (e.categoryGuessed && Math.abs(e.amount || 0) > 0.005) {
+          dedotti.push(`conto ${a.accountNumber} · ${FX.toISO(e.date)} · ${(e.amount).toFixed(2)} ${a.currency} · commento "${e.comment || '(vuoto)'}" → trattato come ${e.isDeposit ? 'deposito reale' : 'prelievo reale'}`);
+        }
+      }));
+      add('Classificazione di depositi e prelievi', dedotti.length ? 'warn' : 'ok',
+          dedotti.length ? 'Questi movimenti non avevano un commento riconoscibile e sono stati classificati solo dal segno. Controlla se qualcuno è in realtà un giroconto fra tuoi conti: cambia il quadro RW, non la plusvalenza.'
+                         : 'Tutti i movimenti di cassa hanno un commento riconosciuto.', dedotti);
+
+      // --- 7. Broker riconosciuto ---
+      const ignoti = accounts.filter(a => a.countryInfo === brokerCountries.default || a.countryInfo.displayName === 'Broker estero')
+                             .map(a => `conto ${a.accountNumber}: "${a.company || 'senza nome'}" → paese non riconosciuto, verrebbe indicato Cipro (196)`);
+      add('Riconoscimento del broker e del paese', ignoti.length ? 'warn' : 'ok',
+          ignoti.length ? 'Per questi conti il paese del quadro RW è un ripiego: verificalo prima di consegnare.'
+                        : 'Tutti i broker sono stati riconosciuti con il rispettivo paese.', ignoti);
+
+      // --- 8. Quadratura del quadro RT ---
+      const rt = [];
+      anni.forEach(y => {
+        const t = yearlyData[y].totals;
+        const d = t.grossProfit - Math.abs(t.grossLoss) - t.netProfit;
+        if (Math.abs(d) > 0.02) rt.push(`${y}: RT21 − RT22 − RT23 = ${d.toFixed(2)}`);
+      });
+      add('Quadratura del quadro RT', rt.length ? 'error' : 'ok',
+          rt.length ? 'Corrispettivi meno costi non danno la plusvalenza dichiarata.'
+                    : 'Per ogni anno RT21 − RT22 = RT23.', rt);
+
+      // --- 9. Bonus e credit esclusi ---
+      const bonus = accounts.filter(a => Math.abs(a.totalBonusCredits || 0) > 0.005)
+                            .map(a => `conto ${a.accountNumber}: ${a.totalBonusCredits.toFixed(2)} ${a.currency} di bonus/credit esclusi dalla giacenza`);
+      if (bonus.length) add('Bonus e credit del broker', 'warn',
+          'Importi di bonus non prelevabili esclusi dal monitoraggio RW. Verifica che sia il trattamento voluto.', bonus);
+
+      // --- 10. Anni ancora in corso ---
+      const inCorso = anni.filter(y => annoProvvisorio(y));
+      if (inCorso.length) add('Anni non ancora chiusi', 'warn',
+          `L'anno ${inCorso.join(', ')} non è concluso: giacenze finali, giorni e IVAFE sono provvisori e andranno rifatti a fine anno.`);
+
+      ultimaVerifica = checks;
+      return checks;
+    }
+
+    function renderVerifica() {
+      const el = document.getElementById('verificaSection');
+      if (!el) return;
+      if (accounts.length === 0) { el.innerHTML = ''; return; }
+      const checks = eseguiVerifiche();
+      const nErr = checks.filter(c => c.esito === 'error').length;
+      const nWarn = checks.filter(c => c.esito === 'warn').length;
+
+      const testata = nErr > 0
+        ? `<div class="status error" style="font-size:14px;">❌ ${nErr} controlli non superati: i numeri non sono affidabili finché non li risolvi.</div>`
+        : (nWarn > 0
+          ? `<div class="status" style="background:var(--gold-dim);border:1px solid rgba(245,158,11,0.4);color:var(--gold);font-size:14px;">⚠️ Nessun errore, ma ${nWarn} punti da controllare prima di consegnare.</div>`
+          : `<div class="status success" style="font-size:14px;">✅ Tutti i ${checks.length} controlli superati: i dati quadrano.</div>`);
+
+      const icona = e => e === 'ok' ? '✅' : (e === 'warn' ? '⚠️' : '❌');
+      const colore = e => e === 'ok' ? 'var(--green)' : (e === 'warn' ? 'var(--gold)' : 'var(--red)');
+
+      el.innerHTML = `<div class="card-title">🔍 Verifica dati</div>
+        ${testata}
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
+        ${checks.map(c => `
+          <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${colore(c.esito)};border-radius:8px;padding:12px 14px;">
+            <div style="font-weight:600;font-size:13px;">${icona(c.esito)} ${c.titolo}</div>
+            <div style="font-size:12px;color:var(--text-dim);margin-top:4px;line-height:1.5;">${c.dettaglio}</div>
+            ${c.righe.length ? `<ul style="margin:8px 0 0 18px;font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;">${c.righe.slice(0, 12).map(r => `<li style="margin:2px 0;">${r}</li>`).join('')}${c.righe.length > 12 ? `<li>… e altri ${c.righe.length - 12}</li>` : ''}</ul>` : ''}
+          </div>`).join('')}
+        </div>`;
+    }
+
+    // Riga di esito da stampare sui documenti generati
+    function verificaNote() {
+      if (!ultimaVerifica) return '';
+      const nErr = ultimaVerifica.filter(c => c.esito === 'error').length;
+      const nWarn = ultimaVerifica.filter(c => c.esito === 'warn').length;
+      const tot = ultimaVerifica.length;
+      if (nErr > 0) {
+        return `<p style="margin-top:8px;font-size:11px;color:#991b1b;background:#fee2e2;border:1px solid #ef4444;border-radius:6px;padding:8px 10px;"><strong>Verifica dati: ${nErr} controlli non superati su ${tot}.</strong> Il documento è stato generato comunque, ma i numeri vanno risolti prima dell'uso.</p>`;
+      }
+      if (nWarn > 0) {
+        return `<p style="margin-top:8px;font-size:11px;color:#92400e;">Verifica dati: ${tot - nWarn} controlli superati su ${tot}, ${nWarn} punti segnalati da controllare (dettaglio nell'applicazione).</p>`;
+      }
+      return `<p style="margin-top:8px;font-size:11px;color:#166534;">Verifica dati: tutti i ${tot} controlli superati. Il saldo finale di ogni conto coincide con movimenti di cassa e risultato dei trade.</p>`;
+    }
+
     // Un anno non ancora concluso produce numeri provvisori: va detto, sia a
     // schermo sia sui documenti stampati.
     function annoProvvisorio(year) {
@@ -1338,7 +1549,7 @@
           <div class="section"><h2>📑 Dettaglio per Account</h2>
             <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rows}</tbody></table>
           </div>
-          <div class="info"><strong>📝 Istruzioni:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}</div>
+          <div class="info"><strong>📝 Istruzioni:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}</div>
           <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RT_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
@@ -1387,7 +1598,7 @@
           <div class="header"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year} • Generato il ${new Date().toLocaleDateString('it-IT')}</div></div>
           <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${accHTML}</div>
           <div class="hl"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
-          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}</div>
+          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}</div>
           <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RW_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
@@ -1433,7 +1644,7 @@
             <div class="section"><h2>📑 Dettaglio per Account</h2>
               <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rtRows}</tbody></table>
             </div>
-            <div class="info"><strong>📝 Istruzioni RT:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}</div>
+            <div class="info"><strong>📝 Istruzioni RT:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}</div>
           </div>
         `;
         
@@ -1472,7 +1683,7 @@
             <div class="header-rw"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year}</div></div>
             <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${rwAccounts}</div>
             <div class="hl-rw"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
-            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}</div>
+            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}</div>
           </div>
         `;
       });

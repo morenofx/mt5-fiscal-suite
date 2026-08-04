@@ -200,6 +200,7 @@ Convenzione usata ovunque nell'app: <strong>1 USD = X EUR</strong> (es. 0.9243).
 <!-- RIEPILOGO -->
 <div id="riepilogo" class="section">
 <h2>📊 Riepilogo totale</h2>
+<div id="verificaBox"></div>
 <div id="summary"></div>
 <button onclick="generatePDF()" class="success big">📄 Stampa / Salva PDF</button>
 </div>
@@ -856,6 +857,7 @@ function calcTotals(soloAnno) {
 }
 
 function renderSummary() {
+    renderVerifica();
     const t = calcTotals(true);
     const tAll = calcTotals(false);
     const anno = t.anno;
@@ -905,6 +907,136 @@ function renderSummary() {
             <div class="tot-row big"><span>Netto accreditato da MetaQuotes:</span><span>€ ${t.totEur_netto.toFixed(2)}</span></div>
         </div>
     `;
+}
+
+// ==================== VERIFICA DATI ====================
+// Controlli sui rischi tipici di questa app: incollare due volte la stessa
+// tabella, lasciare dentro un proprio acquisto, righe senza data o senza cambio.
+let ultimaVerifica = null;
+
+function eseguiVerifiche() {
+    const anno = getAnno();
+    const checks = [];
+    const add = (titolo, esito, dettaglio, righe) => checks.push({ titolo, esito, dettaglio, righe: righe || [] });
+    const tutte = allItems();
+    const inAnno = tutte.filter(({it}) => it.date && parseInt(it.date.slice(0,4), 10) === anno);
+
+    // --- 1. Righe duplicate ---
+    const visti = {}, dup = [];
+    inAnno.forEach(({it, kind}) => {
+        const k = [it.date, it.product || it.signal, (it.lordo||0).toFixed(2)].join('|');
+        if (visti[k]) dup.push(`${it.date} · ${it.product || it.signal} · $${(it.lordo||0).toFixed(2)} (${visti[k]+1} volte)`);
+        visti[k] = (visti[k] || 0) + 1;
+    });
+    add('Vendite duplicate', dup.length ? 'warn' : 'ok',
+        dup.length ? 'Stessa data, stesso prodotto e stesso importo più di una volta. Può essere reale (due clienti nello stesso giorno) oppure la tabella incollata due volte: controlla su MQL5 il numero di transazione.'
+                   : 'Nessuna riga sospetta di essere stata inserita due volte.', dup);
+
+    // --- 2. Righe senza data ---
+    const senzaData = tutte.filter(({it}) => !it.date).map(({it}) => `${it.product || it.signal} · $${(it.lordo||0).toFixed(2)}`);
+    add('Date presenti su ogni riga', senzaData.length ? 'error' : 'ok',
+        senzaData.length ? 'Senza data non si può applicare il cambio del giorno né attribuire la vendita a un anno: queste righe restano fuori da tutto.'
+                         : 'Tutte le righe hanno una data.', senzaData);
+
+    // --- 3. Righe fuori dall\'anno selezionato ---
+    const fuori = tutte.filter(({it}) => it.date && parseInt(it.date.slice(0,4), 10) !== anno)
+                       .map(({it}) => `${it.date} · ${it.product || it.signal} · $${(it.lordo||0).toFixed(2)}`);
+    add(`Righe fuori dall'anno ${anno}`, fuori.length ? 'warn' : 'ok',
+        fuori.length ? `Sono caricate ma escluse dai totali e dal PDF dell'anno ${anno}. Se ti servono, cambia l'anno di riferimento e genera un secondo documento.`
+                     : `Tutte le righe caricate appartengono all'anno ${anno}.`, fuori);
+
+    // --- 4. Cambi applicati ---
+    let mancanti = [], prec = 0, manuali = 0;
+    inAnno.forEach(({it}) => {
+        const r = rateFor(it.date);
+        if (r.rate == null) mancanti.push(`${it.date} · ${it.product || it.signal} · $${(it.lordo||0).toFixed(2)}`);
+        else if (r.source === 'BCE_PREC') prec++;
+        else if (r.source === 'MANUALE') manuali++;
+    });
+    if (mancanti.length) {
+        add('Cambio applicato a ogni vendita', 'error',
+            'Queste vendite non hanno un cambio: i totali in euro sono incompleti. Clicca "Scarica / aggiorna cambi BCE".', mancanti);
+    } else if (manuali > 0) {
+        add('Cambio applicato a ogni vendita', 'warn',
+            `${manuali} vendite convertite con cambio manuale invece che con la rilevazione BCE del giorno. Va dichiarato al commercialista.`);
+    } else {
+        add('Cambio applicato a ogni vendita', 'ok',
+            `Tutte le ${inAnno.length} vendite convertite al cambio BCE` + (prec ? `, di cui ${prec} con l'ultima rilevazione precedente perché cadute in giorni non quotati.` : ' del rispettivo giorno.'));
+    }
+
+    // --- 5. Coerenza fra lordo e netto accreditato ---
+    const incoerenti = [];
+    inAnno.forEach(({it}) => {
+        if (typeof it.nettoOriginale !== 'number') return;
+        const atteso = (it.lordo || 0) * 0.8;
+        if (Math.abs(atteso - it.nettoOriginale) > 0.011) {
+            incoerenti.push(`${it.date} · ${it.product || it.signal} · lordo $${(it.lordo||0).toFixed(2)} → atteso netto $${atteso.toFixed(2)}, letto $${it.nettoOriginale.toFixed(2)}`);
+        }
+    });
+    add('Coerenza fra lordo e netto accreditato', incoerenti.length ? 'warn' : 'ok',
+        incoerenti.length ? 'Il lordo non corrisponde al netto diviso 0,80. Può essere una riga modificata a mano, oppure una commissione diversa dal 20% su quella vendita.'
+                          : 'Su ogni riga il lordo ricostruito corrisponde al netto realmente accreditato.', incoerenti);
+
+    // --- 6. Righe inserite a mano ---
+    const aMano = inAnno.filter(({it}) => typeof it.nettoOriginale !== 'number')
+                        .map(({it}) => `${it.date} · ${it.product || it.signal} · $${(it.lordo||0).toFixed(2)}`);
+    if (aMano.length) add('Righe inserite o modificate a mano', 'warn',
+        'Non provengono dalla tabella Payments di MQL5: l\'importo non è verificabile automaticamente. Controllale contro l\'estratto MQL5.', aMano);
+
+    // --- 7. Possibili acquisti tuoi finiti fra le vendite ---
+    const sospetti = products.filter(p => p.date && parseInt(p.date.slice(0,4), 10) === anno && guessIsPurchase(p))
+                             .map(p => `${p.date} · ${p.product} · $${(p.lordo||0).toFixed(2)}`);
+    add('Acquisti tuoi scambiati per vendite', sospetti.length ? 'warn' : 'ok',
+        sospetti.length ? 'Questi prodotti non risultano fra i tuoi: se li hai comprati tu come cliente non sono corrispettivi e vanno tolti.'
+                        : 'Nessun prodotto estraneo al tuo catalogo fra le vendite.', sospetti);
+
+    // --- 8. Date future ---
+    const oggi = FX.todayISO();
+    const future = inAnno.filter(({it}) => it.date > oggi).map(({it}) => `${it.date} · ${it.product || it.signal}`);
+    if (future.length) add('Date successive a oggi', 'error',
+        'Una vendita non può avere data futura: probabile errore di battitura.', future);
+
+    ultimaVerifica = checks;
+    return checks;
+}
+
+function renderVerifica() {
+    const el = document.getElementById('verificaBox');
+    if (!el) return;
+    if (allItems().length === 0) { el.innerHTML = ''; return; }
+    const checks = eseguiVerifiche();
+    const nErr = checks.filter(c => c.esito === 'error').length;
+    const nWarn = checks.filter(c => c.esito === 'warn').length;
+
+    const testata = nErr > 0
+        ? `<div class="alert"><strong>❌ ${nErr} controlli non superati:</strong> l'imponibile non è affidabile finché non li risolvi.</div>`
+        : (nWarn > 0
+            ? `<div style="background:#78350f;border:1px solid #f59e0b;color:#fde68a;padding:12px 15px;border-radius:8px;margin:12px 0;font-size:13px;"><strong>⚠️ Nessun errore, ma ${nWarn} punti da controllare</strong> prima di registrare gli importi.</div>`
+            : `<div style="background:#14532d;border:1px solid #22c55e;color:#bbf7d0;padding:12px 15px;border-radius:8px;margin:12px 0;font-size:13px;"><strong>✅ Tutti i ${checks.length} controlli superati.</strong></div>`);
+
+    const icona = e => e === 'ok' ? '✅' : (e === 'warn' ? '⚠️' : '❌');
+    const colore = e => e === 'ok' ? '#22c55e' : (e === 'warn' ? '#f59e0b' : '#ef4444');
+
+    el.innerHTML = `<div class="panel"><h3>🔍 Verifica dati</h3>
+        ${testata}
+        <div style="display:flex;flex-direction:column;gap:8px;">
+        ${checks.map(c => `
+          <div style="background:#0f172a;border:1px solid #334155;border-left:3px solid ${colore(c.esito)};border-radius:8px;padding:10px 12px;">
+            <div style="font-weight:600;font-size:13px;">${icona(c.esito)} ${c.titolo}</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:4px;line-height:1.5;">${c.dettaglio}</div>
+            ${c.righe.length ? `<ul style="margin:8px 0 0 18px;font-size:11px;color:#94a3b8;font-family:monospace;">${c.righe.slice(0,12).map(r => `<li style="margin:2px 0;">${r}</li>`).join('')}${c.righe.length>12?`<li>… e altri ${c.righe.length-12}</li>`:''}</ul>` : ''}
+          </div>`).join('')}
+        </div></div>`;
+}
+
+function verificaNotePdf() {
+    if (!ultimaVerifica) return '';
+    const nErr = ultimaVerifica.filter(c => c.esito === 'error').length;
+    const nWarn = ultimaVerifica.filter(c => c.esito === 'warn').length;
+    const tot = ultimaVerifica.length;
+    if (nErr > 0) return `<div class="warn-box"><strong>Verifica dati: ${nErr} controlli non superati su ${tot}.</strong> Documento generato comunque: risolvi le segnalazioni prima di registrare gli importi.</div>`;
+    if (nWarn > 0) return `<p style="font-size:11px;color:#92400e;margin-top:8px;">Verifica dati: ${tot - nWarn} controlli superati su ${tot}, ${nWarn} punti segnalati da controllare (dettaglio nell'applicazione).</p>`;
+    return `<p style="font-size:11px;color:#166534;margin-top:8px;">Verifica dati: tutti i ${tot} controlli superati (nessuna riga duplicata, ogni vendita con data e cambio BCE, lordo coerente con il netto accreditato).</p>`;
 }
 
 function generatePDF() {
@@ -987,6 +1119,7 @@ function generatePDF() {
     <p style="margin-top: 0; color: #555;">${nome ? '<strong>' + nome + '</strong> &nbsp;·&nbsp; ' : ''}Documento generato il ${today}</p>
 
     ${avvisoMancanti}
+    ${verificaNotePdf()}
 
     <div class="key-box" style="grid-template-columns:1fr;margin-top:18px;">
         <div class="key-card lordo" style="background:linear-gradient(135deg,#15803d,#16a34a);">
