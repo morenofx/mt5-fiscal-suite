@@ -200,7 +200,7 @@
       <div class="card-title">📂 Carica Report MT5</div>
       <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
         <div class="icon">📊</div>
-        <p>Trascina qui i report MT5 (.xlsx) <strong>o un'intera cartella</strong></p>
+        <p>Trascina qui i report MT5 (.xlsx o .html) <strong>o un'intera cartella</strong></p>
         <p class="hint">💡 MT5 → Toolbox → Cronologia → Tasto destro → Report → Excel</p>
         <p class="hint" style="margin-top:6px;">📁 Supporto cartelle con sottodirectory (drag&drop o pulsanti sotto)</p>
       </div>
@@ -208,7 +208,7 @@
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()" style="flex:1;min-width:180px;">📄 Seleziona file</button>
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('folderInput').click()" style="flex:1;min-width:180px;">📁 Seleziona cartella</button>
       </div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="handleFiles(event)">
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.htm,.html" multiple style="display:none;" onchange="handleFiles(event)">
       <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;" onchange="handleFiles(event)">
     </div>
     
@@ -535,7 +535,7 @@
     function traverseEntry(entry, fileList) {
       return new Promise(resolve => {
         if (entry.isFile) {
-          if (entry.name.match(/\.xlsx?$/i)) {
+          if (entry.name.match(/\.(xlsx?|html?)$/i)) {
             entry.file(file => { fileList.push(file); resolve(); }, () => resolve());
           } else {
             resolve();
@@ -567,7 +567,7 @@
     async function handleFiles(event) {
       const allFiles = Array.from(event.target.files);
       // Filtra solo gli xlsx (anche da cartelle che contengono altro)
-      const files = allFiles.filter(f => f.name.match(/\.xlsx?$/i));
+      const files = allFiles.filter(f => f.name.match(/\.(xlsx?|html?)$/i));
       const dz = document.getElementById('dropZone');
       
       if (files.length === 0) {
@@ -614,6 +614,7 @@
         }
 
         const errorMsg = errors > 0 ? ` <span style="color:#fbbf24">(${errors} errori)</span>` : '';
+        if (errors > 0) showStatus('❌ File non letti:<br>' + errorList.map(x => '• ' + x).join('<br>'), true);
         const dupMsg = duplicati > 0 ? ` <span style="color:#fbbf24">• ${duplicati} file già caricati, ignorati</span>` : '';
         dz.innerHTML = `<div class="icon">📁</div><p>Trascina altri file o clicca</p><p class="hint">✅ ${accounts.length} account caricati • ${FX.coverage().observations} rilevazioni BCE${errorMsg}${dupMsg}</p>`;
         if (errors > 0) console.warn('File con errori:', errorList);
@@ -643,20 +644,136 @@
       return Array.from(years);
     }
 
+    // Individua le colonne dai NOMI di intestazione invece che dalla posizione.
+    // Serve perche' l'export HTML di MT5 non allinea le colonne come l'.xlsx, e
+    // perche' un terminale in italiano scrive "Profitto" al posto di "Profit".
+    // Se un nome non si trova si ricade sulla posizione classica dell'.xlsx.
+    // Legge un report HTML di MT5 con il parser del browser, tenendo OGNI cella
+    // come testo. Delegare la conversione a chi indovina il tipo produce danni
+    // silenziosi: su un export di prova alcune celle negative diventavano numeri
+    // completamente diversi. Qui i numeri li converte numero() piu' avanti.
+    function htmlToAOA(testo) {
+      const doc = new DOMParser().parseFromString(testo, 'text/html');
+      const righe = [];
+      doc.querySelectorAll('tr').forEach(tr => {
+        const celle = [];
+        tr.querySelectorAll('th,td').forEach(td => {
+          celle.push((td.textContent || '').replace(/\u00a0/g, ' ').trim());
+          const cs = parseInt(td.getAttribute('colspan') || '1', 10);
+          for (let k = 1; k < cs; k++) celle.push('');
+        });
+        righe.push(celle);
+      });
+      return righe;
+    }
+
+    // Conversione numerica tollerante ai formati dei report.
+    // L'export HTML di MT5 scrive i negativi come "- 24.13" (meno staccato) e usa
+    // spazi come separatore delle migliaia: parseFloat vi restituisce NaN, e una
+    // perdita che diventa zero gonfia la plusvalenza. Gestisce anche la virgola
+    // decimale dei terminali in italiano.
+    function numero(v) {
+      if (typeof v === 'number') return isFinite(v) ? v : 0;
+      if (v === null || v === undefined) return 0;
+      let t = String(v).trim();
+      if (!t) return 0;
+      t = t.replace(/[\s\u00a0\u202f\u2009]/g, '');   // spazi, anche unicode
+      t = t.replace(/^\+/, '');
+      const neg = /^[-\u2212(]/.test(t);
+      t = t.replace(/[()\u2212-]/g, '');
+      if (t.indexOf(',') !== -1 && t.indexOf('.') !== -1) {
+        // il separatore decimale e' l'ultimo dei due
+        t = (t.lastIndexOf(',') > t.lastIndexOf('.'))
+          ? t.replace(/\./g, '').replace(',', '.')
+          : t.replace(/,/g, '');
+      } else if (t.indexOf(',') !== -1) {
+        t = t.replace(',', '.');
+      }
+      const n = parseFloat(t);
+      if (!isFinite(n)) return 0;
+      return neg ? -n : n;
+    }
+
+    const ALIAS_COLONNE = {
+      symbol:     ['symbol', 'simbolo'],
+      type:       ['type', 'tipo'],
+      direction:  ['direction', 'direzione'],
+      volume:     ['volume', 'vol'],
+      commission: ['commission', 'commissione', 'commissioni'],
+      fee:        ['fee', 'tassa', 'tasse', 'taxes'],
+      swap:       ['swap'],
+      profit:     ['profit', 'profitto'],
+      balance:    ['balance', 'saldo', 'bilancio'],
+      comment:    ['comment', 'commento']
+    };
+
+    function mappaColonne(headerRow, predefinite) {
+      const idx = Object.assign({}, predefinite);
+      if (!Array.isArray(headerRow)) return idx;
+      const norm = v => String(v || '').toLowerCase().replace(/[\s\/\.]/g, '');
+      Object.keys(ALIAS_COLONNE).forEach(campo => {
+        if (!(campo in predefinite)) return;
+        for (let c = 0; c < headerRow.length; c++) {
+          const testo = norm(headerRow[c]);
+          if (!testo) continue;
+          if (ALIAS_COLONNE[campo].some(a => testo === a)) { idx[campo] = c; break; }
+        }
+      });
+      return idx;
+    }
+
     // ==================== PROCESS MT5 FILE ====================
     async function processFile(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = e => {
           try {
-            const wb = XLSX.read(e.target.result, { type: 'array' });
-            const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            const buf = new Uint8Array(e.target.result);
+
+            // Un file di soli zeri arriva quando la copia dal VPS Windows via RDP
+            // non trasferisce il contenuto: la dimensione e' giusta, i dati no.
+            // Va detto, altrimenti il conto sparisce dai calcoli senza spiegazione.
+            let vuoto = buf.length === 0;
+            if (!vuoto) {
+              vuoto = true;
+              const limite = Math.min(buf.length, 8192);
+              for (let k = 0; k < limite; k++) { if (buf[k] !== 0) { vuoto = false; break; } }
+            }
+            if (vuoto) throw new Error('file vuoto: contiene solo byte a zero. La copia dal VPS non e\' andata a buon fine, riprova il trasferimento');
+
+            // MT5 esporta in .xlsx (archivio ZIP, firma "PK") oppure in HTML,
+            // spesso codificato UTF-16. SheetJS legge entrambi.
+            let data;
+            if (buf[0] === 0x50 && buf[1] === 0x4B) {
+              const wb = XLSX.read(buf, { type: 'array' });
+              data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+            } else {
+              let enc = 'utf-8';
+              if (buf[0] === 0xFF && buf[1] === 0xFE) enc = 'utf-16le';
+              else if (buf[0] === 0xFE && buf[1] === 0xFF) enc = 'utf-16be';
+              const testo = new TextDecoder(enc).decode(buf);
+              if (testo.indexOf('<') === -1) throw new Error('formato non riconosciuto: non e\' un .xlsx ne\' un report HTML di MT5');
+              data = htmlToAOA(testo);
+              if (data.length === 0) throw new Error('nessuna tabella trovata nel file HTML');
+            }
             
             // Account info
             let accountName = '', accountNumber = '', company = '', currency = 'USD', serverName = '';
+            const valoreDopo = (row, etichetta) => {
+              for (let c = 0; c < row.length; c++) {
+                if (String(row[c] || '').trim().toLowerCase() === etichetta) {
+                  for (let k = c + 1; k < row.length; k++) {
+                    const v = String(row[k] || '').trim();
+                    if (v) return v;
+                  }
+                }
+              }
+              return '';
+            };
             for (let i = 0; i < 15; i++) {
               const row = data[i] || [];
-              const c0 = String(row[0] || ''), c3 = String(row[3] || '');
+              const c0 = String(row[0] || '');
+              const c3 = valoreDopo(row, c0.trim().toLowerCase()) || String(row[3] || '');
               if (c0 === 'Name:') accountName = c3;
               if (c0 === 'Account:') {
                 const m = c3.match(/(\d+)/); if (m) accountNumber = m[1];
@@ -690,8 +807,10 @@
             }
             
             // Parse Positions (completed trades)
-            let posStart = -1;
-            for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Positions') { posStart = i + 2; break; } }
+            let posStart = -1, posHeader = -1;
+            for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Positions') { posHeader = i + 1; posStart = i + 2; break; } }
+            const colPos = mappaColonne(posHeader >= 0 ? data[posHeader] : null,
+              { symbol: 2, type: 3, volume: 4, commission: 10, swap: 11, profit: 12 });
             
             const trades = [];
             let grossProfit = 0, grossLoss = 0, wins = 0, losses = 0;
@@ -718,14 +837,14 @@
                   // commissioni e swap sono gia' negativi quando sono costi.
                   // Sono le voci che fanno quadrare il saldo del conto, e sono
                   // costi inerenti che riducono la plusvalenza.
-                  const profitRaw = parseFloat(row[12]) || 0;
-                  const commission = parseFloat(row[10]) || 0;
-                  const swap = parseFloat(row[11]) || 0;
+                  const profitRaw = numero(row[colPos.profit]);
+                  const commission = numero(row[colPos.commission]);
+                  const swap = numero(row[colPos.swap]);
                   const profit = profitRaw + commission + swap;
-                  const symbol = String(row[2] || '');
-                  const type = String(row[3] || '').toLowerCase();
+                  const symbol = String(row[colPos.symbol] || '');
+                  const type = String(row[colPos.type] || '').toLowerCase();
                   if (symbol && (type === 'buy' || type === 'sell')) {
-                    trades.push({ date: tradeDate, profit, profitRaw, commission, swap, symbol, volume: parseFloat(String(row[4]).replace(',','.')) || 0 });
+                    trades.push({ date: tradeDate, profit, profitRaw, commission, swap, symbol, volume: numero(row[colPos.volume]) });
                     totalProfitRaw += profitRaw; totalCommission += commission; totalSwap += swap;
                     if (profit > 0) { grossProfit += profit; wins++; }
                     else if (profit < 0) { grossLoss += profit; losses++; }
@@ -736,8 +855,10 @@
             
             // Fallback: parse Deals if no Positions
             if (trades.length === 0) {
-              let ds = -1;
-              for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Deals') { ds = i + 2; break; } }
+              let ds = -1, dsHeader = -1;
+              for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Deals') { dsHeader = i + 1; ds = i + 2; break; } }
+              const colD = mappaColonne(dsHeader >= 0 ? data[dsHeader] : null,
+                { symbol: 2, type: 3, direction: 4, volume: 5, commission: 8, fee: 9, swap: 10, profit: 11 });
               if (ds !== -1) {
                 for (let i = ds; i < data.length; i++) {
                   const row = data[i];
@@ -750,15 +871,15 @@
                   }
                   if (!td || isNaN(td.getTime())) continue;
                   try {
-                    const praw = parseFloat(row[11]) || 0;
-                    const comm = (parseFloat(row[8]) || 0) + (parseFloat(row[9]) || 0);
-                    const sw = parseFloat(row[10]) || 0;
+                    const praw = numero(row[colD.profit]);
+                    const comm = numero(row[colD.commission]) + numero(row[colD.fee]);
+                    const sw = numero(row[colD.swap]);
                     const p = praw + comm + sw;
-                    const t = String(row[3] || '').toLowerCase();
-                    const d = String(row[4] || '').toLowerCase();
-                    const sym = String(row[2] || '');
+                    const t = String(row[colD.type] || '').toLowerCase();
+                    const d = String(row[colD.direction] || '').toLowerCase();
+                    const sym = String(row[colD.symbol] || '');
                     if (sym && (t === 'buy' || t === 'sell') && d === 'out') {
-                      trades.push({ date: td, profit: p, profitRaw: praw, commission: comm, swap: sw, symbol: sym, volume: parseFloat(row[5]) || 0 });
+                      trades.push({ date: td, profit: p, profitRaw: praw, commission: comm, swap: sw, symbol: sym, volume: numero(row[colD.volume]) });
                       totalProfitRaw += praw; totalCommission += comm; totalSwap += sw;
                       if (p > 0) { grossProfit += p; wins++; } else if (p < 0) { grossLoss += p; losses++; }
                     }
@@ -768,8 +889,10 @@
             }
             
             // Build balance timeline from Deals (only balance/credit rows + first/last deal)
-            let dealsStart = -1;
-            for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Deals') { dealsStart = i + 2; break; } }
+            let dealsStart = -1, dealsHeader = -1;
+            for (let i = 0; i < data.length; i++) { if (data[i][0] === 'Deals') { dealsHeader = i + 1; dealsStart = i + 2; break; } }
+            const colTl = mappaColonne(dealsHeader >= 0 ? data[dealsHeader] : null,
+              { type: 3, profit: 11, balance: 12, comment: 13 });
             
             const balanceTimeline = [];
             let totalDeposits = 0, totalWithdrawals = 0, totalBonusCredits = 0;
@@ -838,10 +961,10 @@
             if (dealsStart !== -1) {
               for (let i = dealsStart; i < data.length; i++) {
                 const row = data[i];
-                const type = String(row[3] || '').toLowerCase();
-                const balance = parseFloat(row[12]);
-                const amount = parseFloat(row[11]) || 0;
-                const commentRaw = String(row[13] || '');
+                const type = String(row[colTl.type] || '').toLowerCase();
+                const balance = (row[colTl.balance] === '' || row[colTl.balance] === undefined) ? NaN : numero(row[colTl.balance]);
+                const amount = numero(row[colTl.profit]);
+                const commentRaw = String(row[colTl.comment] || '');
                 const comment = commentRaw.toLowerCase();
                 
                 if (row[0] && ['Working Orders','Orders','Results'].includes(String(row[0]))) break;
