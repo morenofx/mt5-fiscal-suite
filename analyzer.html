@@ -287,17 +287,22 @@
       // Per cautela manteniamo flag fino al 2017 (tutti i tuoi anni di trading sono dopo, quindi NON black list)
       'raw trading': { code: '690', name: 'Seychelles', displayName: 'IC Markets (Raw Trading Ltd)', blackList: true, blackListUntil: 2017 },
       'international capital markets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false },
-      'ic markets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false },
-      'icmarkets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false },
+      'ic markets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false, generico: true },
+      'icmarkets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false, generico: true },
       // Vantage — distinguere entità: International (Cayman) vs Global Prime (UK) vs altre
       'vantage international': { code: '136', name: 'Cayman Islands', displayName: 'Vantage (Cayman)', blackList: true, blackListUntil: 2022 },
+      'vantage global prime': { code: '036', name: 'Australia', displayName: 'Vantage Global Prime (AU)', blackList: false },
       'vantage global': { code: '826', name: 'Regno Unito', displayName: 'Vantage (UK)', blackList: false },
-      'vantage': { code: '136', name: 'Cayman Islands', displayName: 'Vantage', blackList: true, blackListUntil: 2022 },
+      'vantage markets (pty)': { code: '078', name: 'Sudafrica', displayName: 'Vantage Markets (Pty) Ltd', blackList: false },
+      'vantage markets pty': { code: '078', name: 'Sudafrica', displayName: 'Vantage Markets (Pty) Ltd', blackList: false },
+      // Regola generica: si applica quando l'entita' giuridica non e' riconosciuta.
+      // Il paese che ne esce e' un'ipotesi, non un dato: viene segnalato nella verifica.
+      'vantage': { code: '136', name: 'Cayman Islands', displayName: 'Vantage', blackList: true, blackListUntil: 2022, generico: true },
       // AxiCorp — Pty Ltd = Australia, AxiCorp Limited = UK
       'axicorp financial services pty': { code: '036', name: 'Australia', displayName: 'AxiCorp (AU)', blackList: false },
       'axicorp limited': { code: '826', name: 'Regno Unito', displayName: 'Axi (UK)', blackList: false },
-      'axicorp': { code: '036', name: 'Australia', displayName: 'AxiCorp', blackList: false },
-      'axi': { code: '036', name: 'Australia', displayName: 'Axi', blackList: false },
+      'axicorp': { code: '036', name: 'Australia', displayName: 'AxiCorp', blackList: false, generico: true },
+      'axi': { code: '036', name: 'Australia', displayName: 'Axi', blackList: false, generico: true },
       'axitrader': { code: '036', name: 'Australia', displayName: 'AxiTrader', blackList: false },
       // Altri broker comuni
       'pepperstone': { code: '036', name: 'Australia', displayName: 'Pepperstone', blackList: false },
@@ -316,7 +321,7 @@
       'ig': { code: '826', name: 'Regno Unito', displayName: 'IG', blackList: false },
       'admirals': { code: '372', name: 'Estonia', displayName: 'Admirals', blackList: false },
       'admiral markets': { code: '372', name: 'Estonia', displayName: 'Admiral Markets', blackList: false },
-      'default': { code: '196', name: 'Cipro', displayName: 'Broker estero', blackList: false }
+      'default': { code: '196', name: 'Cipro', displayName: 'Broker estero', blackList: false, generico: true }
     };
     
     // ==================== UI HELPERS ====================
@@ -1608,11 +1613,14 @@
                          : 'Tutti i movimenti di cassa hanno un commento riconosciuto.', dedotti);
 
       // --- 7. Broker riconosciuto ---
-      const ignoti = accounts.filter(a => a.countryInfo === brokerCountries.default || a.countryInfo.displayName === 'Broker estero')
-                             .map(a => `conto ${a.accountNumber}: "${a.company || 'senza nome'}" → paese non riconosciuto, verrebbe indicato Cipro (196)`);
-      add('Riconoscimento del broker e del paese', ignoti.length ? 'warn' : 'ok',
-          ignoti.length ? 'Per questi conti il paese del quadro RW è un ripiego: verificalo prima di consegnare.'
-                        : 'Tutti i broker sono stati riconosciuti con il rispettivo paese.', ignoti);
+      // Il paese del quadro RW dipende dall'ENTITA' GIURIDICA, non dal marchio:
+      // lo stesso broker ha societa' in paesi diversi. Quando la corrispondenza
+      // e' avvenuta su una regola generica, il paese e' un'ipotesi da verificare.
+      const ipotesi = accounts.filter(a => a.countryInfo && a.countryInfo.generico)
+        .map(a => `conto ${a.accountNumber}: entità "${a.company || 'senza nome'}" non riconosciuta con precisione → indicato ${a.countryInfo.name} (${a.countryInfo.code}) per ripiego`);
+      add('Riconoscimento del broker e del paese', ipotesi.length ? 'warn' : 'ok',
+          ipotesi.length ? 'Il codice paese del quadro RW dipende dalla società con cui è aperto il conto, non dal marchio del broker: lo stesso broker ha entità in paesi diversi, alcune in black list. Per questi conti il paese è un ripiego: controlla l\'entità giuridica prima di consegnare.'
+                         : 'Per ogni conto l\'entità giuridica è stata riconosciuta con il rispettivo paese.', ipotesi);
 
       // --- 8. Quadratura del quadro RT ---
       const rt = [];
