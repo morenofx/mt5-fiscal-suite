@@ -951,7 +951,7 @@
                     cat = amount >= 0 ? 'internal_in' : 'internal_out';
                 }
                 // 5. Depositi reali (dalla banca, dalla carta o da un circuito di pagamento)
-                else if (/\b(cc\s+deposit|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2}|paypal|skrill|neteller|cardpay|unlimit|bridger|sepa|bonifico|bank\s+in|visa|mastercard|maestro|card\s+payment)\b/.test(c)) {
+                else if (/\b(cc\s+deposit|cc-fsa|dep\s+|deposit|wire\s+in|pay\s+in|psc{1,2}|paypal|skrill|neteller|cardpay|unlimit|bridger|sepa|bonifico|bank\s+in|visa|mastercard|maestro|card\s+payment)\b/.test(c) || /[-\s]fsa\b/.test(c)) {
                     cat = 'real_deposit';
                 }
                 // 6. Prelievi reali (dal conto verso la banca)
