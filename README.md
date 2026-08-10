@@ -40,6 +40,14 @@ modo in cui viene costruito quello ufficiale.
 Una richiesta per anno scarica l'intera serie storica; i cambi restano in cache locale
 (non cambiano mai), quindi dopo la prima apertura le app funzionano anche offline.
 
+## Valute
+
+Il motore lavora su **qualsiasi valuta pubblicata dalla BCE**, non solo il dollaro: la valuta di
+ogni conto viene letta dal report (qualsiasi codice a tre lettere) e la serie storica corrispondente
+viene scaricata da sola. L'euro non viene convertito. Se per una valuta non esistono rilevazioni,
+gli importi in euro di quei conti restano **non calcolati** e due controlli lo segnalano come
+errore: meglio un buco dichiarato che un numero convertito col cambio della valuta sbagliata.
+
 ## Verifica dati
 
 Entrambe le app eseguono controlli automatici sui dati caricati e mostrano l'esito, che finisce

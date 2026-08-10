@@ -31,12 +31,23 @@
 (function (global) {
   'use strict';
 
-  var CACHE_KEY = 'mt5fs_fx_ecb_usdeur_v1';
+  var CACHE_KEY = 'mt5fs_fx_ecb_v2';
 
-  // rates:  'YYYY-MM-DD' -> number (EUR per 1 USD), solo rilevazioni BCE reali
-  // manual: 'YYYY-MM-DD' -> number, forzature dell'utente
-  // years:  '2025' -> ISO timestamp del download, per sapere cosa e' gia' coperto
+  // Tutto e' indicizzato per VALUTA, perche' un conto di trading puo' essere
+  // aperto in qualsiasi divisa: trattarne una per un'altra darebbe importi
+  // sbagliati senza che nulla lo segnali.
+  // rates:  'USD' -> { 'YYYY-MM-DD': number }   (EURO per 1 unita' di valuta)
+  // manual: 'USD' -> { 'YYYY-MM-DD': number }   forzature dell'utente
+  // years:  'USD' -> { '2025': {at, src} }      cosa e' gia' stato scaricato
   var store = { rates: {}, manual: {}, years: {} };
+
+  // Valuta di riferimento: l'euro non si converte.
+  var BASE = 'EUR';
+
+  function norm(cur) { return String(cur || 'USD').toUpperCase().trim(); }
+  function ratesOf(cur) { return (store.rates[cur] = store.rates[cur] || {}); }
+  function manualOf(cur) { return (store.manual[cur] = store.manual[cur] || {}); }
+  function yearsOf(cur) { return (store.years[cur] = store.years[cur] || {}); }
 
   function loadCache() {
     try {
@@ -93,16 +104,16 @@
       .catch(function () { clearTimeout(timer); return null; });
   }
 
-  function store_(day, value) {
-    if (typeof value === 'number' && isFinite(value) && value > 0) { store.rates[day] = value; return 1; }
+  function store_(cur, day, value) {
+    if (typeof value === 'number' && isFinite(value) && value > 0) { ratesOf(cur)[day] = value; return 1; }
     return 0;
   }
 
   // FONTE 1 — Data Portal della BCE: la fonte primaria e ufficiale.
   // Serie EXR.D.USD.EUR.SP00.A = tasso di riferimento giornaliero, espresso in
   // DOLLARI per 1 EURO: va invertito per ottenere la convenzione della suite.
-  function fetchEcb(fromISO, toISOStr) {
-    var url = 'https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A' +
+  function fetchEcb(cur, fromISO, toISOStr) {
+    var url = 'https://data-api.ecb.europa.eu/service/data/EXR/D.' + cur + '.EUR.SP00.A' +
               '?startPeriod=' + fromISO + '&endPeriod=' + toISOStr + '&format=csvdata&detail=dataonly';
     return fetchText(url).then(function (txt) {
       if (!txt) return 0;
@@ -116,8 +127,8 @@
       for (var k = 1; k < lines.length; k++) {
         var c = lines[k].split(',');
         var day = c[iDay];
-        var usdPerEur = parseFloat(c[iVal]);
-        if (day && isFinite(usdPerEur) && usdPerEur > 0) n += store_(day, 1 / usdPerEur);
+        var perEuro = parseFloat(c[iVal]);   // unita' di valuta per 1 EUR
+        if (day && isFinite(perEuro) && perEuro > 0) n += store_(cur, day, 1 / perEuro);
       }
       return n;
     });
@@ -125,11 +136,11 @@
 
   // FONTE 2 — Frankfurter, che ridistribuisce gli stessi dati BCE.
   // Serve solo se il Data Portal non risponde. Restituisce gia' EUR per 1 USD.
-  function fetchFrankfurter(fromISO, toISOStr) {
+  function fetchFrankfurter(cur, fromISO, toISOStr) {
     var range = fromISO + '..' + toISOStr;
     var urls = [
-      'https://api.frankfurter.dev/v1/' + range + '?base=USD&symbols=EUR',
-      'https://api.frankfurter.app/' + range + '?from=USD&to=EUR'
+      'https://api.frankfurter.dev/v1/' + range + '?base=' + cur + '&symbols=EUR',
+      'https://api.frankfurter.app/' + range + '?from=' + cur + '&to=EUR'
     ];
     var i = 0;
     function attempt() {
@@ -141,7 +152,7 @@
         if (!d || !d.rates) return attempt();
         var n = 0;
         Object.keys(d.rates).forEach(function (day) {
-          n += store_(day, d.rates[day] && d.rates[day].EUR);
+          n += store_(cur, day, d.rates[day] && d.rates[day].EUR);
         });
         return n > 0 ? n : attempt();
       });
@@ -156,12 +167,12 @@
 
   // Scarica un intervallo intero in UNA sola chiamata. Prova le fonti in ordine:
   // basta che una risponda. Ritorna { n, src }.
-  function fetchRange(fromISO, toISOStr) {
+  function fetchRange(cur, fromISO, toISOStr) {
     var i = 0;
     function attempt() {
       if (i >= SOURCES.length) return Promise.resolve({ n: 0, src: null });
       var s = SOURCES[i++];
-      return s.run(fromISO, toISOStr).then(function (n) {
+      return s.run(cur, fromISO, toISOStr).then(function (n) {
         return n > 0 ? { n: n, src: s.name } : attempt();
       });
     }
@@ -171,32 +182,37 @@
   // Garantisce che gli anni indicati siano in cache. I cambi storici BCE non
   // cambiano mai: una volta scaricati restano validi per sempre.
   // L'anno corrente viene invece rinfrescato se la cache e' vecchia di un giorno.
-  function ensureYears(years, onProgress) {
+  function ensureYears(years, cur, onProgress) {
+    if (typeof cur === 'function') { onProgress = cur; cur = null; }
+    cur = norm(cur);
+    if (cur === BASE) return Promise.resolve({ downloaded: 0, years: [], falliti: [], valuta: cur });
+
     var wanted = [];
     var nowYear = new Date().getFullYear();
     var today = todayISO();
+    var yrs = yearsOf(cur);
     years.forEach(function (y) {
       y = parseInt(y, 10);
       if (!y || y < 1999 || y > nowYear) return;
-      var stamp = store.years[y];
+      var stamp = yrs[y];
       var at = stamp ? (typeof stamp === 'string' ? stamp : stamp.at) : null;
       var stale = !at || (y === nowYear && at.slice(0, 10) !== today);
       if (stale && wanted.indexOf(y) === -1) wanted.push(y);
     });
-    if (wanted.length === 0) return Promise.resolve({ downloaded: 0, years: [], falliti: [] });
+    if (wanted.length === 0) return Promise.resolve({ downloaded: 0, years: [], falliti: [], valuta: cur });
 
     wanted.sort(function (a, b) { return a - b; });
     var done = 0, total = 0, falliti = [], sorgenti = {};
     var chain = Promise.resolve();
     wanted.forEach(function (y) {
       chain = chain.then(function () {
-        if (onProgress) onProgress(done, wanted.length, y);
+        if (onProgress) onProgress(done, wanted.length, y, cur);
         var from = y + '-01-01';
         var to = (y === nowYear) ? today : (y + '-12-31');
-        return fetchRange(from, to).then(function (res) {
+        return fetchRange(cur, from, to).then(function (res) {
           done++;
           if (res.n > 0) {
-            store.years[y] = { at: new Date().toISOString(), src: res.src };
+            yrs[y] = { at: new Date().toISOString(), src: res.src };
             sorgenti[res.src] = (sorgenti[res.src] || 0) + 1;
             total += res.n;
           } else {
@@ -207,7 +223,28 @@
     });
     return chain.then(function () {
       saveCache();
-      return { downloaded: total, years: wanted, falliti: falliti, sorgenti: sorgenti };
+      return { downloaded: total, years: wanted, falliti: falliti, sorgenti: sorgenti, valuta: cur };
+    });
+  }
+
+  // Scarica in un colpo solo tutte le valute richieste.
+  function ensureCurrencies(years, valute, onProgress) {
+    var lista = (valute || []).map(norm).filter(function (c, i, a) {
+      return c && c !== BASE && a.indexOf(c) === i;
+    });
+    var esiti = {};
+    var chain = Promise.resolve();
+    lista.forEach(function (c) {
+      chain = chain.then(function () {
+        return ensureYears(years, c, onProgress).then(function (r) { esiti[c] = r; });
+      });
+    });
+    return chain.then(function () {
+      var falliti = [];
+      Object.keys(esiti).forEach(function (c) {
+        (esiti[c].falliti || []).forEach(function (y) { falliti.push(c + ' ' + y); });
+      });
+      return { valute: esiti, falliti: falliti };
     });
   }
 
@@ -219,66 +256,73 @@
      ------------------------------------------------------------------------- */
   var MISSING = { rate: null, refDate: null, source: null, exact: false };
 
-  function rate(dateLike) {
+  function rate(dateLike, cur) {
+    cur = norm(cur);
+    // L'euro non si converte: vale sempre uno.
+    if (cur === BASE) return { rate: 1, refDate: toISO(dateLike), source: 'BASE', exact: true, valuta: BASE };
+
     var iso = toISO(dateLike);
     if (!iso) return MISSING;
+    var R = ratesOf(cur), M = manualOf(cur);
 
-    if (store.manual[iso] != null) {
-      return { rate: store.manual[iso], refDate: iso, source: 'MANUALE', exact: true };
-    }
-    if (store.rates[iso] != null) {
-      return { rate: store.rates[iso], refDate: iso, source: 'BCE', exact: true };
-    }
+    if (M[iso] != null) return { rate: M[iso], refDate: iso, source: 'MANUALE', exact: true, valuta: cur };
+    if (R[iso] != null) return { rate: R[iso], refDate: iso, source: 'BCE', exact: true, valuta: cur };
+
     // Weekend / festivo BCE: si usa l'ultima rilevazione precedente disponibile,
     // dichiarando la data effettivamente utilizzata.
     var probe = iso;
     for (var k = 0; k < 10; k++) {
       probe = addDays(probe, -1);
-      if (store.manual[probe] != null) {
-        return { rate: store.manual[probe], refDate: probe, source: 'MANUALE', exact: false };
-      }
-      if (store.rates[probe] != null) {
-        return { rate: store.rates[probe], refDate: probe, source: 'BCE_PREC', exact: false };
-      }
+      if (M[probe] != null) return { rate: M[probe], refDate: probe, source: 'MANUALE', exact: false, valuta: cur };
+      if (R[probe] != null) return { rate: R[probe], refDate: probe, source: 'BCE_PREC', exact: false, valuta: cur };
     }
     return MISSING;
   }
 
-  // Media aritmetica delle rilevazioni BCE di un mese = "cambio medio mensile"
-  // nell'accezione usata da Banca d'Italia / Agenzia delle Entrate.
-  function monthlyAverage(year, month) {
-    var pre = String(year) + '-' + String(month).padStart(2, '0') + '-';
-    var vals = [];
-    Object.keys(store.rates).forEach(function (d) {
-      if (d.indexOf(pre) === 0) vals.push(store.rates[d]);
-    });
-    if (vals.length === 0) return MISSING;
-    var sum = vals.reduce(function (a, b) { return a + b; }, 0);
-    return { rate: sum / vals.length, refDate: pre.slice(0, 7), source: 'BCE_MEDIA_MESE', exact: true, n: vals.length };
+  // Elenco delle valute per cui esistono rilevazioni in memoria.
+  function valuteDisponibili() {
+    return Object.keys(store.rates).filter(function (c) {
+      return Object.keys(store.rates[c] || {}).length > 0;
+    }).sort();
   }
 
-  function yearAverage(year) {
-    var pre = String(year) + '-';
-    var vals = [];
-    Object.keys(store.rates).forEach(function (d) {
-      if (d.indexOf(pre) === 0) vals.push(store.rates[d]);
-    });
+  // Media aritmetica delle rilevazioni BCE di un mese = "cambio medio mensile"
+  // nell'accezione usata da Banca d'Italia / Agenzia delle Entrate.
+  function monthlyAverage(year, month, cur) {
+    cur = norm(cur);
+    if (cur === BASE) return { rate: 1, refDate: String(year), source: 'BASE', exact: true, valuta: BASE };
+    var pre = String(year) + '-' + String(month).padStart(2, '0') + '-';
+    var R = ratesOf(cur), vals = [];
+    Object.keys(R).forEach(function (d) { if (d.indexOf(pre) === 0) vals.push(R[d]); });
     if (vals.length === 0) return MISSING;
     var sum = vals.reduce(function (a, b) { return a + b; }, 0);
-    return { rate: sum / vals.length, refDate: String(year), source: 'BCE_MEDIA_ANNO', exact: true, n: vals.length };
+    return { rate: sum / vals.length, refDate: pre.slice(0, 7), source: 'BCE_MEDIA_MESE', exact: true, n: vals.length, valuta: cur };
+  }
+
+  function yearAverage(year, cur) {
+    cur = norm(cur);
+    if (cur === BASE) return { rate: 1, refDate: String(year), source: 'BASE', exact: true, valuta: BASE };
+    var pre = String(year) + '-';
+    var R = ratesOf(cur), vals = [];
+    Object.keys(R).forEach(function (d) { if (d.indexOf(pre) === 0) vals.push(R[d]); });
+    if (vals.length === 0) return MISSING;
+    var sum = vals.reduce(function (a, b) { return a + b; }, 0);
+    return { rate: sum / vals.length, refDate: String(year), source: 'BCE_MEDIA_ANNO', exact: true, n: vals.length, valuta: cur };
   }
 
   // Cambio di fine anno: 31/12, o ultima rilevazione utile precedente.
   // Per l'anno in corso restituisce l'ultima rilevazione disponibile.
-  function yearEnd(year) {
+  function yearEnd(year, cur) {
+    cur = norm(cur);
+    if (cur === BASE) return { rate: 1, refDate: String(year), source: 'BASE', exact: true, valuta: BASE };
     var nowYear = new Date().getFullYear();
     if (parseInt(year, 10) > nowYear) return MISSING;
     if (parseInt(year, 10) === nowYear) {
-      var r = rate(todayISO());
-      if (r.rate != null) return { rate: r.rate, refDate: r.refDate, source: 'BCE_ULTIMA', exact: false };
+      var r = rate(todayISO(), cur);
+      if (r.rate != null) return { rate: r.rate, refDate: r.refDate, source: 'BCE_ULTIMA', exact: false, valuta: cur };
       return MISSING;
     }
-    return rate(year + '-12-31');
+    return rate(year + '-12-31', cur);
   }
 
   /* ---------------------------------------------------------------------------
@@ -286,14 +330,14 @@
      ------------------------------------------------------------------------- */
   // USD -> EUR al cambio della data. Ritorna { eur, rate, refDate, source }.
   // Se il cambio manca, eur e' null: il chiamante DEVE segnalarlo, non stimarlo.
-  function usdToEur(amountUsd, dateLike) {
-    var r = rate(dateLike);
+  function usdToEur(amount, dateLike, cur) {
+    var r = rate(dateLike, cur);
     if (r.rate == null) return { eur: null, rate: null, refDate: null, source: null, exact: false };
-    return { eur: (amountUsd || 0) * r.rate, rate: r.rate, refDate: r.refDate, source: r.source, exact: r.exact };
+    return { eur: (amount || 0) * r.rate, rate: r.rate, refDate: r.refDate, source: r.source, exact: r.exact };
   }
 
-  function eurToUsd(amountEur, dateLike) {
-    var r = rate(dateLike);
+  function eurToUsd(amountEur, dateLike, cur) {
+    var r = rate(dateLike, cur);
     if (r.rate == null) return { usd: null, rate: null, refDate: null, source: null };
     return { usd: (amountEur || 0) / r.rate, rate: r.rate, refDate: r.refDate, source: r.source };
   }
@@ -301,45 +345,51 @@
   /* ---------------------------------------------------------------------------
      OVERRIDE MANUALI
      ------------------------------------------------------------------------- */
-  function setManual(dateLike, value) {
+  function setManual(dateLike, value, cur) {
+    cur = norm(cur);
     var iso = toISO(dateLike);
     var v = parseFloat(value);
     if (!iso) return false;
-    if (!isFinite(v) || v <= 0) { delete store.manual[iso]; saveCache(); return true; }
+    if (!isFinite(v) || v <= 0) { delete manualOf(cur)[iso]; saveCache(); return true; }
     // Guardia anti-convenzione-invertita: un cambio EUR/USD plausibile sta fra
     // 0.5 e 1.5 EUR per dollaro. Un 1.08 inserito pensando a "dollari per euro"
     // e' un errore classico: viene accettato ma il chiamante puo' avvisare.
-    store.manual[iso] = v;
+    manualOf(cur)[iso] = v;
     saveCache();
     return true;
   }
 
   function isPlausible(v) { return isFinite(v) && v > 0.4 && v < 2.0; }
 
-  function clearManual() { store.manual = {}; saveCache(); }
+  function clearManual(cur) {
+    if (cur) store.manual[norm(cur)] = {}; else store.manual = {};
+    saveCache();
+  }
 
-  function manualEntries() {
-    return Object.keys(store.manual).sort().map(function (d) {
-      return { date: d, rate: store.manual[d] };
-    });
+  function manualEntries(cur) {
+    var M = manualOf(norm(cur));
+    return Object.keys(M).sort().map(function (d) { return { date: d, rate: M[d], valuta: norm(cur) }; });
   }
 
   /* ---------------------------------------------------------------------------
      DIAGNOSTICA — serve alle app per dichiarare la qualita' dei cambi usati
      ------------------------------------------------------------------------- */
-  function coverage() {
-    var years = Object.keys(store.years).sort();
-    var srcs = {};
+  function coverage(cur) {
+    cur = norm(cur);
+    var yrs = yearsOf(cur), srcs = {};
+    var years = Object.keys(yrs).sort();
     years.forEach(function (y) {
-      var st = store.years[y];
+      var st = yrs[y];
       var name = (st && typeof st === 'object' && st.src) ? st.src : 'ECB';
       srcs[name] = (srcs[name] || 0) + 1;
     });
     return {
+      valuta: cur,
       years: years,
-      observations: Object.keys(store.rates).length,
-      manual: Object.keys(store.manual).length,
-      sources: srcs
+      observations: Object.keys(ratesOf(cur)).length,
+      manual: Object.keys(manualOf(cur)).length,
+      sources: srcs,
+      valuteDisponibili: valuteDisponibili()
     };
   }
 
@@ -363,10 +413,13 @@
   loadCache();
 
   global.FX = {
+    BASE: BASE,
     toISO: toISO,
     addDays: addDays,
     todayISO: todayISO,
     ensureYears: ensureYears,
+    ensureCurrencies: ensureCurrencies,
+    valuteDisponibili: valuteDisponibili,
     rate: rate,
     monthlyAverage: monthlyAverage,
     yearAverage: yearAverage,

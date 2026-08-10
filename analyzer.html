@@ -6,7 +6,7 @@
   <title>MT5 Fiscal Analyzer v3 — Quadro RT & RW</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="fx.js?v=2026-08-04"></script>
+  <script src="fx.js?v=2026-08-09"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -333,62 +333,72 @@
     
     // ==================== MOTORE CAMBI (fx.js) ====================
     // Cambio applicabile a una data, rispettando la modalita' scelta per l'anno.
-    function rateAt(dateLike, year) {
-      const y = parseInt(year, 10);
-      if (yearMode[y] === 'fixed' && yearFixed[y]) {
-        return { rate: yearFixed[y], source: 'MANUALE', refDate: 'anno ' + y };
+    function chiaveAnnoValuta(year, valuta) { return parseInt(year, 10) + '|' + (valuta || 'USD'); }
+
+    function rateAt(dateLike, year, valuta) {
+      valuta = valuta || 'USD';
+      if (valuta === 'EUR') return { rate: 1, source: 'BASE', refDate: 'euro' };
+      const k = chiaveAnnoValuta(year, valuta);
+      if (yearMode[k] === 'fixed' && yearFixed[k]) {
+        return { rate: yearFixed[k], source: 'MANUALE', refDate: 'anno ' + parseInt(year, 10) };
       }
-      return FX.rate(FX.toISO(dateLike));
+      return FX.rate(FX.toISO(dateLike), valuta);
     }
 
     // Cambio rappresentativo dell'anno (31/12): usato per le voci non databili,
     // come il bonus/credit cumulato del conto.
-    function yearRate(year) {
-      const y = parseInt(year, 10);
-      if (yearMode[y] === 'fixed' && yearFixed[y]) {
-        return { rate: yearFixed[y], source: 'MANUALE', refDate: 'anno ' + y };
+    function yearRate(year, valuta) {
+      valuta = valuta || 'USD';
+      if (valuta === 'EUR') return { rate: 1, source: 'BASE', refDate: 'euro' };
+      const k = chiaveAnnoValuta(year, valuta);
+      if (yearMode[k] === 'fixed' && yearFixed[k]) {
+        return { rate: yearFixed[k], source: 'MANUALE', refDate: 'anno ' + parseInt(year, 10) };
       }
-      return FX.yearEnd(y);
+      return FX.yearEnd(parseInt(year, 10), valuta);
     }
 
     // USD -> EUR con statistica della qualita' del dato.
     // Se il cambio manca ritorna 0 e lo contabilizza: il totale mancante viene
     // mostrato a schermo, mai nascosto.
-    function usdToEur(amountUsd, dateLike, year) {
-      const r = rateAt(dateLike, year);
+    function usdToEur(amount, dateLike, year, valuta) {
+      valuta = valuta || 'USD';
+      if (valuta === 'EUR') return amount || 0;
+      const r = rateAt(dateLike, year, valuta);
       if (r.rate == null) {
         fxStats.mancanti++;
-        fxStats.usdNonConvertiti += Math.abs(amountUsd || 0);
+        fxStats.usdNonConvertiti += Math.abs(amount || 0);
+        (fxStats.valuteMancanti = fxStats.valuteMancanti || {})[valuta] = true;
         return 0;
       }
       if (r.source === 'MANUALE') fxStats.manuale++;
       else if (r.source === 'BCE_PREC') fxStats.prec++;
       else fxStats.bce++;
-      return (amountUsd || 0) * r.rate;
+      return (amount || 0) * r.rate;
     }
 
-    // Converte solo se il conto e' in USD; se e' gia' in EUR lascia il valore.
+    // Converte in euro l'importo di un conto, qualunque sia la sua valuta.
     function toEur(amount, currency, dateLike, year) {
       if (currency === 'EUR') return amount;
-      return usdToEur(amount, dateLike, year);
+      return usdToEur(amount, dateLike, year, currency);
     }
 
-    function setYearMode(year, mode) {
-      yearMode[year] = mode;
+    function setYearMode(year, valuta, mode) {
+      yearMode[chiaveAnnoValuta(year, valuta)] = mode;
       consolidateData(); renderResults(); saveToStorage();
     }
 
-    function setYearFixed(year, value) {
+    function setYearFixed(year, valuta, value) {
+      const k = chiaveAnnoValuta(year, valuta);
       const v = parseFloat(value);
       if (isFinite(v) && v > 0) {
         if (!FX.isPlausible(v)) {
-          alert('Attenzione: ' + v + ' non sembra un cambio EUR per dollaro.\n\n' +
-                'Qui va indicato quanti EURO vale UN DOLLARO (tipicamente fra 0.80 e 1.00).\n' +
-                'Se hai il cambio "dollari per euro" (es. 1.08), inserisci ' + (1/v).toFixed(4) + '.');
+          alert('Attenzione: ' + v + ' non sembra un cambio EUR per unità di ' + valuta + '.\n\n' +
+                'Qui va indicato quanti EURO vale UNA unità di ' + valuta + '.\n' +
+                'Se hai il cambio inverso (' + valuta + ' per euro), inserisci ' + (1/v).toFixed(4) + '.');
         }
-        yearFixed[year] = v;
+        yearFixed[k] = v;
       } else {
-        delete yearFixed[year];
+        delete yearFixed[k];
       }
       consolidateData(); renderResults(); saveToStorage();
     }
@@ -396,25 +406,34 @@
     function renderExchangeRates(years) {
       const container = document.getElementById('exchangeRatesUI');
       container.innerHTML = '';
+      const valute = collectCurrencies();   // solo le valute diverse dall'euro
+      if (valute.length === 0) {
+        container.innerHTML = '<p style="font-size:12px;color:var(--text-dim);">Tutti i conti sono in euro: nessuna conversione necessaria.</p>';
+        renderFxQuality();
+        return;
+      }
       Array.from(years).sort().forEach(year => {
-        const ye = FX.yearEnd(year);
-        const mode = yearMode[year] || 'daily';
-        const fixed = yearFixed[year] != null ? yearFixed[year] : (ye.rate || 0.92);
-        const badge = ye.rate != null
-          ? `<span style="font-size:10px;color:var(--green);">BCE ${ye.refDate}: ${ye.rate.toFixed(4)}</span>`
-          : `<span style="font-size:10px;color:var(--gold);">⚠️ nessun dato BCE</span>`;
-        const div = document.createElement('div');
-        div.className = 'form-group';
-        div.style.minWidth = '250px';
-        div.innerHTML = `<label>${year} ${badge}</label>
-          <select onchange="setYearMode(${year}, this.value)">
-            <option value="daily" ${mode === 'daily' ? 'selected' : ''}>Cambio BCE del giorno</option>
-            <option value="fixed" ${mode === 'fixed' ? 'selected' : ''}>Cambio unico manuale</option>
-          </select>
-          <input type="number" step="0.0001" value="${fixed.toFixed(4)}" title="EUR per 1 USD"
-                 ${mode === 'fixed' ? '' : 'style="display:none;"'}
-                 onchange="setYearFixed(${year}, this.value)">`;
-        container.appendChild(div);
+        valute.forEach(cur => {
+          const ye = FX.yearEnd(year, cur);
+          const k = chiaveAnnoValuta(year, cur);
+          const mode = yearMode[k] || 'daily';
+          const fixed = yearFixed[k] != null ? yearFixed[k] : (ye.rate || 0.92);
+          const badge = ye.rate != null
+            ? `<span style="font-size:10px;color:var(--green);">BCE ${ye.refDate}: ${ye.rate.toFixed(4)}</span>`
+            : `<span style="font-size:10px;color:var(--gold);">⚠️ nessun dato BCE</span>`;
+          const div = document.createElement('div');
+          div.className = 'form-group';
+          div.style.minWidth = '250px';
+          div.innerHTML = `<label>${cur} · ${year} ${badge}</label>
+            <select onchange="setYearMode(${year}, '${cur}', this.value)">
+              <option value="daily" ${mode === 'daily' ? 'selected' : ''}>Cambio BCE del giorno</option>
+              <option value="fixed" ${mode === 'fixed' ? 'selected' : ''}>Cambio unico manuale</option>
+            </select>
+            <input type="number" step="0.0001" value="${fixed.toFixed(4)}" title="EUR per 1 ${cur}"
+                   ${mode === 'fixed' ? '' : 'style="display:none;"'}
+                   onchange="setYearFixed(${year}, '${cur}', this.value)">`;
+          container.appendChild(div);
+        });
       });
       renderFxQuality();
     }
@@ -447,7 +466,9 @@
       if (years.size === 0) { showStatus('⚠️ Carica prima dei report MT5', true); return; }
       FX.reset();
       showStatus('⏳ Scaricamento serie storica BCE...');
-      const res = await FX.ensureYears(Array.from(years));
+      const res = await FX.ensureCurrencies(Array.from(years), collectCurrencies());
+      res.downloaded = Object.values(res.valute || {}).reduce((s, r) => s + (r.downloaded || 0), 0);
+      res.years = Array.from(years);
       if (res.falliti && res.falliti.length > 0) {
         showStatus(`❌ Cambi non scaricati per: ${res.falliti.join(', ')}. La fonte BCE non ha risposto: riprova fra poco o imposta un cambio manuale per quegli anni.`, true);
       } else {
@@ -529,8 +550,8 @@
         document.getElementById('currencySection').style.display = 'block';
         consolidateData(); renderResults();
         // I cambi BCE sono in cache locale; se manca qualche anno viene scaricato ora.
-        FX.ensureYears(collectYears()).then(res => {
-          if (res.downloaded > 0) { consolidateData(); renderResults(); }
+        FX.ensureCurrencies(collectYears(), collectCurrencies()).then(() => {
+          consolidateData(); renderResults();
         });
       }
     });
@@ -611,8 +632,9 @@
         // (serie storica BCE completa), comprese quelle dei saldi.
         const years = collectYears();
         dz.innerHTML = '<div class="icon">💱</div><p>Scaricamento cambi BCE...</p>';
-        const fx = await FX.ensureYears(years, (done, tot, y) => {
-          dz.innerHTML = `<div class="icon">💱</div><p>Scaricamento cambi BCE ${y} (${done + 1}/${tot})...</p>`;
+        const valute = collectCurrencies();
+        const fx = await FX.ensureCurrencies(years, valute, (done, tot, y, cur) => {
+          dz.innerHTML = `<div class="icon">💱</div><p>Scaricamento cambi BCE ${cur} ${y} (${done + 1}/${tot})...</p>`;
         });
         if (fx.falliti && fx.falliti.length > 0) {
           showStatus(`⚠️ Cambi non disponibili per: ${fx.falliti.join(', ')}. Gli importi in EURO di quegli anni risulteranno incompleti finché non riprovi il download.`, true);
@@ -621,7 +643,8 @@
         const errorMsg = errors > 0 ? ` <span style="color:#fbbf24">(${errors} errori)</span>` : '';
         if (errors > 0) showStatus('❌ File non letti:<br>' + errorList.map(x => '• ' + x).join('<br>'), true);
         const dupMsg = duplicati > 0 ? ` <span style="color:#fbbf24">• ${duplicati} file già caricati, ignorati</span>` : '';
-        dz.innerHTML = `<div class="icon">📁</div><p>Trascina altri file o clicca</p><p class="hint">✅ ${accounts.length} account caricati • ${FX.coverage().observations} rilevazioni BCE${errorMsg}${dupMsg}</p>`;
+        const rilevazioni = collectCurrencies().reduce((n, c) => n + FX.coverage(c).observations, 0);
+        dz.innerHTML = `<div class="icon">📁</div><p>Trascina altri file o clicca</p><p class="hint">✅ ${accounts.length} account caricati • ${rilevazioni} rilevazioni BCE${errorMsg}${dupMsg}</p>`;
         if (errors > 0) console.warn('File con errori:', errorList);
         if (duplicati > 0) showStatus(`ℹ️ ${duplicati} report erano già caricati (stesso conto, stesso periodo, stessi trade): ignorati per non contarli due volte.`);
         if (sovrapposti.size > 0) showStatus(`⚠️ Attenzione: per il conto ${Array.from(sovrapposti).join(', ')} hai caricato più report con periodi diversi. Se i periodi si sovrappongono, alcuni trade vengono contati due volte: usa un solo report che copra tutto il periodo.`, true);
@@ -638,6 +661,13 @@
       const min = a.minDate ? FX.toISO(a.minDate) : '-';
       const max = a.maxDate ? FX.toISO(a.maxDate) : '-';
       return [a.accountNumber, n, min, max, (a.netProfit || 0).toFixed(2), (a.valoreFinale || 0).toFixed(2)].join('|');
+    }
+
+    // Valute presenti nei conti caricati: l'euro non serve scaricarlo.
+    function collectCurrencies() {
+      const v = new Set();
+      accounts.forEach(a => { if (a.currency && a.currency !== 'EUR') v.add(a.currency); });
+      return Array.from(v);
     }
 
     function collectYears() {
@@ -793,8 +823,10 @@
               if (c0 === 'Name:') accountName = c3;
               if (c0 === 'Account:') {
                 const m = c3.match(/(\d+)/); if (m) accountNumber = m[1];
-                if (c3.includes('(EUR')) currency = 'EUR';
-                else if (c3.includes('(USD')) currency = 'USD';
+                // Qualsiasi divisa, non solo EUR e USD: un conto in AUD trattato
+                // come dollari darebbe importi sbagliati senza che nulla lo segnali.
+                const val = c3.match(/\(\s*([A-Z]{3})\s*[,)]/);
+                if (val) currency = val[1];
                 // Estrai nome server da "(EUR, ICMarketsSC-MT5-2, real, Hedge)"
                 const srv = c3.match(/,\s*([A-Za-z][\w-]+),/);
                 if (srv) serverName = srv[1];
@@ -1175,7 +1207,7 @@
         Object.values(d.accounts).forEach(a => {
           // Cambio rappresentativo dell'anno: serve solo per le voci non databili
           // (bonus/credit cumulato). Tutto il resto usa il cambio della sua data.
-          const yr = a.currency === 'USD' ? yearRate(year) : { rate: 1, source: 'EUR', refDate: year };
+          const yr = yearRate(year, a.currency);
           a.yearRate = yr.rate;
           a.yearRateLabel = a.currency === 'USD'
             ? (yr.rate != null ? FX.sourceLabel(yr.source, yr.refDate) : 'non disponibile')
@@ -1201,8 +1233,8 @@
           } else {
             const dIni = a.valoreInizialeDate || new Date(parseInt(year), 0, 1);
             const dFin = a.valoreFinaleDate || new Date(parseInt(year), 11, 31);
-            a.valoreInizialeEUR = usdToEur(a.valoreIniziale, dIni, year);
-            a.valoreFinaleEUR = usdToEur(a.valoreFinale, dFin, year);
+            a.valoreInizialeEUR = usdToEur(a.valoreIniziale, dIni, year, a.currency);
+            a.valoreFinaleEUR = usdToEur(a.valoreFinale, dFin, year, a.currency);
           }
           
           // Movimentazioni: somma in EUR usando il cambio del giorno per ogni evento
@@ -1213,11 +1245,11 @@
             a.yearInternalOutEUR = a.yearInternalOut;
             a.yearPromoEUR = a.yearPromo;
           } else {
-            a.yearDepositsEUR = (a.depositEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year), 0);
-            a.yearWithdrawalsEUR = (a.withdrawalEvents || []).reduce((s,e) => s + usdToEur(-e.amount, e.date, year), 0);
-            a.yearInternalInEUR = (a.internalInEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year), 0);
-            a.yearInternalOutEUR = (a.internalOutEvents || []).reduce((s,e) => s + usdToEur(-e.amount, e.date, year), 0);
-            a.yearPromoEUR = (a.promoEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year), 0);
+            a.yearDepositsEUR = (a.depositEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year, a.currency), 0);
+            a.yearWithdrawalsEUR = (a.withdrawalEvents || []).reduce((s,e) => s + usdToEur(-e.amount, e.date, year, a.currency), 0);
+            a.yearInternalInEUR = (a.internalInEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year, a.currency), 0);
+            a.yearInternalOutEUR = (a.internalOutEvents || []).reduce((s,e) => s + usdToEur(-e.amount, e.date, year, a.currency), 0);
+            a.yearPromoEUR = (a.promoEvents || []).reduce((s,e) => s + usdToEur(e.amount, e.date, year, a.currency), 0);
           }
           
           // IVAFE: 0,2% sul valore medio annuo proporzionato ai giorni
@@ -1479,7 +1511,7 @@
       const bySym={};
       accounts.forEach(a=>{ (a.trades||[]).forEach(t=>{
         const dt = (t.date instanceof Date)?t.date:new Date(t.date);
-        const eur = a.currency==='EUR' ? t.profit : usdToEur(t.profit, dt, dt.getFullYear());
+        const eur = a.currency==='EUR' ? t.profit : usdToEur(t.profit, dt, dt.getFullYear(), a.currency);
         bySym[t.symbol]=(bySym[t.symbol]||0)+eur;
       });});
       const symL = Object.keys(bySym).sort((x,z)=>Math.abs(bySym[z])-Math.abs(bySym[x])).slice(0,12);
@@ -1588,6 +1620,30 @@
       add('Il report copre la storia completa del conto', parziali.length ? 'warn' : 'ok',
           parziali.length ? 'Il report non parte da saldo zero: probabilmente hai esportato un periodo parziale. Riesporta da MT5 con periodo "Tutta la storia" per non perdere operazioni precedenti.'
                           : 'Ogni conto parte da saldo zero: i report coprono la storia completa.', parziali);
+
+      // --- 4bis. Valute dei conti ---
+      // Un conto puo' essere aperto in qualsiasi divisa. Se per una valuta non
+      // esistono rilevazioni, gli importi in euro di quel conto sarebbero
+      // sbagliati: va detto prima, non dopo.
+      const perValuta = {};
+      accounts.forEach(a => {
+        const c = a.currency || '?';
+        (perValuta[c] = perValuta[c] || []).push(a.accountNumber);
+      });
+      const valuteUsate = Object.keys(perValuta).sort();
+      const senzaCambi = valuteUsate.filter(c => c !== 'EUR' && FX.coverage(c).observations === 0);
+      const righeVal = valuteUsate.map(c =>
+        `${c}: ${perValuta[c].length} cont${perValuta[c].length === 1 ? 'o' : 'i'} (${perValuta[c].join(', ')})` +
+        (c === 'EUR' ? ' — nessuna conversione' : ` — ${FX.coverage(c).observations} rilevazioni BCE in memoria`));
+      if (senzaCambi.length) {
+        add('Valute dei conti', 'error',
+            `Per ${senzaCambi.join(', ')} non c'è nessuna rilevazione di cambio: gli importi in euro dei conti in questa valuta non sono calcolabili. Clicca "Riscarica cambi BCE"; se la valuta non è fra quelle pubblicate dalla BCE, imposta un cambio manuale e dichiaralo.`, righeVal);
+      } else {
+        add('Valute dei conti', 'ok',
+            valuteUsate.length === 1 && valuteUsate[0] === 'EUR'
+              ? 'Tutti i conti sono in euro: nessuna conversione di cambio interviene nei calcoli.'
+              : `Valute presenti: ${valuteUsate.join(', ')}. Per ognuna diversa dall'euro ci sono rilevazioni BCE.`, righeVal);
+      }
 
       // --- 5. Qualità dei cambi applicati ---
       if (fxStats.mancanti > 0) {
