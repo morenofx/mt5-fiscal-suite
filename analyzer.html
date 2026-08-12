@@ -274,6 +274,11 @@
     // Nessun cambio "di ripiego" precaricato: se la BCE non ha il dato, il valore
     // manca ed e' dichiarato come tale. Un cambio inventato su una dichiarazione
     // fiscale e' peggio di un dato assente.
+    // Controparti dei giroconti gia' verificate a mano dall'utente, con la nota
+    // che spiega il perche': senza, ogni anno si ripresenta lo stesso allarme
+    // senza memoria di come era stato chiuso.
+    let contropartiOk = {};   // '5077283' -> { nota, data }
+
     let yearMode = {};   // anno -> 'daily' (cambio BCE del giorno) | 'fixed' (unico manuale)
     let yearFixed = {};  // anno -> cambio unico manuale, EUR per 1 USD
     let fxStats = { bce: 0, prec: 0, manuale: 0, mancanti: 0, usdNonConvertiti: 0 };
@@ -382,6 +387,24 @@
       return usdToEur(amount, dateLike, year, currency);
     }
 
+    function segnaControparte(tok) {
+      const nota = prompt(
+        'Cosa hai verificato su ' + tok + '?\n\n' +
+        'Esempi: "wallet del broker, saldo zero", "conto archiviato, chiuso a zero nel 2025",\n' +
+        '"conto IB: provvigioni dichiarate a parte".\n\n' +
+        'La nota resta salvata e compare nei quadri RW che generi.',
+        (contropartiOk[tok] && contropartiOk[tok].nota) || '');
+      if (nota === null) return;
+      if (!nota.trim()) { delete contropartiOk[tok]; }
+      else contropartiOk[tok] = { nota: nota.trim(), data: FX.toISO(new Date()) };
+      saveToStorage(); renderResults();
+    }
+
+    function scordaControparte(tok) {
+      delete contropartiOk[tok];
+      saveToStorage(); renderResults();
+    }
+
     function setYearMode(year, valuta, mode) {
       yearMode[chiaveAnnoValuta(year, valuta)] = mode;
       consolidateData(); renderResults(); saveToStorage();
@@ -488,6 +511,7 @@
           maxDate: a.maxDate?.toISOString() || null
         }));
         localStorage.setItem('mt5fa_accounts', JSON.stringify(toSave));
+        localStorage.setItem('mt5fa_controparti', JSON.stringify(contropartiOk));
         localStorage.setItem('mt5fa_yearmode', JSON.stringify(yearMode));
         localStorage.setItem('mt5fa_yearfixed', JSON.stringify(yearFixed));
       } catch (e) { console.warn('Save error:', e); }
@@ -504,6 +528,8 @@
           minDate: a.minDate ? new Date(a.minDate) : null,
           maxDate: a.maxDate ? new Date(a.maxDate) : null
         }));
+        const cp = localStorage.getItem('mt5fa_controparti');
+        if (cp) contropartiOk = JSON.parse(cp);
         const m = localStorage.getItem('mt5fa_yearmode');
         if (m) yearMode = JSON.parse(m);
         const f = localStorage.getItem('mt5fa_yearfixed');
@@ -514,6 +540,7 @@
     
     function clearStorage() {
       localStorage.removeItem('mt5fa_accounts');
+      localStorage.removeItem('mt5fa_controparti');
       localStorage.removeItem('mt5fa_yearmode');
       localStorage.removeItem('mt5fa_yearfixed');
     }
@@ -1728,23 +1755,34 @@
         }
       }));
       const chiavi = Object.keys(controparti).sort((x, z) => Math.abs(controparti[z]) - Math.abs(controparti[x]));
-      const uscite = chiavi.filter(k => controparti[k] < -0.005);
+      const daFare = chiavi.filter(k => !contropartiOk[k.split('|')[0]]);
+      const uscite = daFare.filter(k => controparti[k] < -0.005);
       if (chiavi.length) {
         const righeCp = chiavi.map(k => {
           const [tok, cur] = k.split('|');
           const v = controparti[k];
+          const verso = v > 0 ? 'ricevuti da lui' : 'inviati a lui';
+          const testa = `${tok}: ${verso} ${Math.abs(v).toFixed(2)} ${cur}`;
+          const ok = contropartiOk[tok];
+          if (ok) {
+            return `<span style="color:var(--green);">✔</span> ${testa} — <em>verificato il ${ok.data}: ${ok.nota}</em> ` +
+                   `<button onclick="scordaControparte('${tok}')" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:4px;font-size:10px;padding:1px 6px;cursor:pointer;">annulla</button>`;
+          }
           // Un wallet del broker (suffisso CW, o la parola wallet) non e' un conto
           // di trading: non esiste un report MT5 da esportare, ma il saldo che vi
           // resta a fine anno e' comunque denaro detenuto all'estero.
           const isWallet = /cw$/i.test(tok) || /wallet/i.test(tok);
-          const nota = isWallet ? ' — sembra un wallet del broker: nessun report MT5 da esportare, il saldo a fine anno va preso dal portale' : '';
-          return `${tok}: ${v > 0 ? 'ricevuti da lui' : 'inviati a lui'} ${Math.abs(v).toFixed(2)} ${cur} (saldo netto dei giroconti)${nota}`;
+          const sugg = isWallet ? ' — sembra un wallet del broker: nessun report MT5 da esportare, il saldo a fine anno va preso dal portale' : '';
+          return `${testa}${sugg} ` +
+                 `<button onclick="segnaControparte('${tok}')" style="background:var(--green-dim);border:1px solid rgba(16,185,129,0.4);color:var(--green);border-radius:4px;font-size:10px;padding:1px 6px;cursor:pointer;">✓ verificata</button>`;
         });
-        add('Conti collegati di cui manca il report', uscite.length ? 'error' : 'warn',
-            (uscite.length
-              ? 'Hai trasferito denaro verso conti di cui non hai caricato il report: quel denaro è uscito dal perimetro monitorato. Se quei conti sono tuoi (wallet del broker, conto IB, altri conti di trading), la loro giacenza manca dal quadro RW e va aggiunta esportando anche i loro report. Attenzione anche alla natura del denaro che ARRIVA da queste controparti: se la fonte è un conto IB o affiliazione, si tratta di provvigioni già maturate altrove, che non compaiono in questi report e vanno dichiarate per conto loro, non come plusvalenza da trading.'
-              : 'Questi conti hanno versato denaro sui tuoi, ma non hai caricato il loro report. Se sono tuoi, anche la loro giacenza va nel quadro RW. E se la fonte è un conto IB o di affiliazione, il denaro che ne arriva è una provvigione maturata altrove: non è una plusvalenza da trading e va dichiarata per conto suo.'),
-            righeCp);
+        const esito = uscite.length ? 'error' : (daFare.length ? 'warn' : 'ok');
+        const testo = daFare.length === 0
+          ? 'Tutte le controparti dei giroconti sono state verificate a mano: la nota di ciascuna è riportata qui sotto e nei quadri RW che generi.'
+          : (uscite.length
+            ? 'Hai trasferito denaro verso conti di cui non hai caricato il report: quel denaro è uscito dal perimetro monitorato. Se quei conti sono tuoi (wallet del broker, conto IB, altri conti di trading), la loro giacenza manca dal quadro RW e va aggiunta esportando anche i loro report. Attenzione anche alla natura del denaro che ARRIVA da queste controparti: se la fonte è un conto IB o affiliazione, si tratta di provvigioni già maturate altrove, che non compaiono in questi report e vanno dichiarate per conto loro, non come plusvalenza da trading. Quando ne hai chiarita una, premi "verificata" e scrivi cosa hai accertato: resta salvato e non te lo richiedo più.'
+            : 'Questi conti hanno versato denaro sui tuoi, ma non hai caricato il loro report. Se sono tuoi, anche la loro giacenza va nel quadro RW. Quando ne hai chiarita una, premi "verificata" e scrivi cosa hai accertato: resta salvato e finisce nei quadri RW.');
+        add('Conti collegati di cui manca il report', esito, testo, righeCp);
       }
 
       // --- 9. Promozioni e rimborsi del broker ---
@@ -1838,6 +1876,17 @@
 
     // Dichiarazione del criterio di conversione: deve comparire su ogni documento
     // consegnato al commercialista.
+    // Le verifiche fatte a mano sulle controparti vanno consegnate insieme ai
+    // numeri: sono la spiegazione del perche' quei conti non compaiono nel quadro.
+    function noteControparti() {
+      const k = Object.keys(contropartiOk);
+      if (!k.length) return '';
+      return `<div style="margin-top:12px;padding:10px 12px;background:#f0fdf4;border:1px solid #22c55e;border-radius:8px;font-size:11px;color:#166534;">
+        <strong>Conti collegati non inclusi, verificati dal contribuente:</strong>
+        <ul style="margin:6px 0 0 18px;">${k.sort().map(t => `<li>${t} — ${contropartiOk[t].nota} <span style="color:#4d7c0f;">(verificato il ${contropartiOk[t].data})</span></li>`).join('')}</ul>
+      </div>`;
+    }
+
     function fxMethodNote(year) {
       const y = parseInt(year, 10);
       if (yearMode[y] === 'fixed' && yearFixed[y]) {
@@ -1879,7 +1928,7 @@
           <div class="section"><h2>📑 Dettaglio per Account</h2>
             <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rows}</tbody></table>
           </div>
-          <div class="info"><strong>📝 Istruzioni:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}</div>
+          <div class="info"><strong>📝 Istruzioni:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
           <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RT_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
@@ -1929,7 +1978,7 @@
           <div class="header"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year} • Generato il ${new Date().toLocaleDateString('it-IT')}</div></div>
           <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${accHTML}</div>
           <div class="hl"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
-          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}</div>
+          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
           <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RW_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
@@ -1975,7 +2024,7 @@
             <div class="section"><h2>📑 Dettaglio per Account</h2>
               <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rtRows}</tbody></table>
             </div>
-            <div class="info"><strong>📝 Istruzioni RT:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}</div>
+            <div class="info"><strong>📝 Istruzioni RT:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
           </div>
         `;
         
@@ -2015,7 +2064,7 @@
             <div class="header-rw"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year}</div></div>
             <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${rwAccounts}</div>
             <div class="hl-rw"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
-            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}</div>
+            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
           </div>
         `;
       });
