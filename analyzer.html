@@ -540,7 +540,10 @@
     
     function clearStorage() {
       localStorage.removeItem('mt5fa_accounts');
-      localStorage.removeItem('mt5fa_controparti');
+      // Le note sulle controparti verificate NON si cancellano insieme ai dati:
+      // sono conoscenza dell'utente, non report. A fine anno si svuota per
+      // ricaricare gli export aggiornati, e ritrovarsi da rifare quelle
+      // verifiche renderebbe inutile averle scritte.
       localStorage.removeItem('mt5fa_yearmode');
       localStorage.removeItem('mt5fa_yearfixed');
     }
@@ -2285,7 +2288,9 @@
     }
     
     function clearData() {
-      if (!confirm('Cancellare tutti i dati MT5 caricati?')) return;
+      const n = Object.keys(contropartiOk).length;
+      const avviso = n ? `\n\nLe ${n} note sulle controparti verificate restano salvate.` : '';
+      if (!confirm('Cancellare tutti i report MT5 caricati?' + avviso)) return;
       accounts = []; yearlyData = {}; clearStorage();
       document.getElementById('resultsSection').style.display = 'none';
       document.getElementById('currencySection').style.display = 'none';
