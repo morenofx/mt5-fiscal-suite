@@ -837,6 +837,17 @@
               if (c0 === 'Company:' || c0 === 'Broker:') company = c3;
             }
             
+            // Senza numero di conto non c'e' niente da attribuire: il file non e'
+            // un report MT5. Va rifiutato, non trasformato in un conto fantasma
+            // che poi compare nel quadro RW con un paese di ripiego.
+            if (!accountNumber) {
+              const testo = data.slice(0, 40).map(r => (r || []).join(' ')).join(' ');
+              if (/closed\s+transactions/i.test(testo)) {
+                throw new Error('e\' un estratto conto MetaTrader 4, formato non ancora supportato');
+              }
+              throw new Error('non e\' un report MT5: manca la riga "Account:" con il numero di conto');
+            }
+
             // Broker country: prima cerca su Company, poi su ServerName
             // (es. "Raw Trading Ltd" + server "ICMarketsSC" → IC Markets Seychelles)
             const cl = company.toLowerCase();
