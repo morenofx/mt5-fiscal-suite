@@ -1828,8 +1828,12 @@
       const nErr = checks.filter(c => c.esito === 'error').length;
       const nWarn = checks.filter(c => c.esito === 'warn').length;
 
+      // Il messaggio nomina i controlli falliti invece di dichiarare in blocco
+      // inaffidabili tutti i numeri: un conto e' un calcolo che non torna, un
+      // altro e' un perimetro forse incompleto, e non vanno confusi.
+      const falliti = checks.filter(c => c.esito === 'error').map(c => c.titolo).join(' · ');
       const testata = nErr > 0
-        ? `<div class="status error" style="font-size:14px;">❌ ${nErr} controlli non superati: i numeri non sono affidabili finché non li risolvi.</div>`
+        ? `<div class="status error" style="font-size:14px;">❌ ${nErr} ${nErr === 1 ? 'controllo non superato' : 'controlli non superati'}: <strong>${falliti}</strong>. Da risolvere prima di consegnare i documenti.</div>`
         : (nWarn > 0
           ? `<div class="status" style="background:var(--gold-dim);border:1px solid rgba(245,158,11,0.4);color:var(--gold);font-size:14px;">⚠️ Nessun errore, ma ${nWarn} punti da controllare prima di consegnare.</div>`
           : `<div class="status success" style="font-size:14px;">✅ Tutti i ${checks.length} controlli superati: i dati quadrano.</div>`);
