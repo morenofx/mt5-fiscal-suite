@@ -65,6 +65,23 @@ schermo sia nella tabella dei conti in copertina. Un controllo segnala i report 
 della fine di un anno chiuso**: non possono contenerlo tutto, e vanno riesportati. È il caso vero
 di export fatti ad aprile e usati per l'anno intero.
 
+## Cartella collegata
+
+L'analyzer può leggere i report **da solo**, da una cartella scelta una volta sola
+(File System Access API, quindi **Chrome o Edge**; su Safari resta il trascinamento).
+Dopo il collegamento, a ogni apertura della pagina i report vengono riletti senza toccare niente:
+basta tenere aggiornati i file nella cartella.
+
+- **Comanda la cartella.** Ogni rilettura rifà i conti da zero con quello che c'è dentro in quel
+  momento: un report sostituito con uno più corto vince comunque, un file tolto fa sparire il suo
+  conto. Senza questo, un export vecchio rimasto in memoria avrebbe potuto battere quello nuovo.
+- Vengono lette anche le **sottocartelle** (una per broker). Le cartelle il cui nome inizia con
+  `_` (o con `.`) sono saltate: `_ARCHIVIO` serve a tenere da parte vecchi export senza che entrino
+  nei conti.
+- Il permesso sulla cartella è ricordato dal browser; ogni tanto va riconcesso con un clic.
+- Una pagina web non può aggiornarsi a finestra chiusa, e nessun browser lo consente: è una
+  protezione, non un limite da aggirare. Il minimo è aprire la pagina.
+
 ## Un anno per volta
 
 Si dichiara un anno alla volta, ma il report caricato contiene tutti gli anni. Per questo ogni

@@ -6,7 +6,7 @@
   <title>MT5 Fiscal Analyzer v3 — Quadro RT & RW</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="fx.js?v=2026-11-03b"></script>
+  <script src="fx.js?v=2026-11-03c"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -206,6 +206,23 @@
           <input type="text" id="con_nome" placeholder="Nome Cognome" oninput="saveToStorage()"></div>
         <div class="form-group"><label>Codice fiscale</label>
           <input type="text" id="con_cf" placeholder="facoltativo" oninput="saveToStorage()"></div>
+      </div>
+    </div>
+
+    <!-- Cartella collegata -->
+    <div class="card" id="cartellaCard" style="display:none;">
+      <div class="card-title">🔗 Cartella dei report</div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
+        Collega una volta sola la cartella dove tieni gli export MT5: da lì in poi, ogni volta che apri questa pagina,
+        i report vengono riletti da soli. Tu sostituisci i file nella cartella e basta.
+        <strong>Comanda la cartella:</strong> a ogni rilettura i conti caricati vengono rifatti da zero con quello che c'è dentro adesso,
+        sottocartelle comprese.
+      </p>
+      <div id="cartellaStato"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-primary" id="btnCollega" onclick="collegaCartella()" style="flex:1;min-width:180px;">🔗 Collega una cartella</button>
+        <button type="button" class="btn btn-secondary" id="btnRileggi" onclick="rileggiCartella()" style="flex:1;min-width:180px;display:none;">🔄 Rileggi ora</button>
+        <button type="button" class="btn btn-secondary" id="btnScollega" onclick="scollegaCartella()" style="display:none;">✖ Scollega</button>
       </div>
     </div>
 
@@ -652,7 +669,9 @@
     
     // ==================== FILE HANDLING ====================
     async function handleFiles(event) {
-      const allFiles = Array.from(event.target.files);
+      // Accetta sia l'evento di <input type=file> sia una lista di File
+      // (quella che arriva dalla cartella collegata).
+      const allFiles = Array.isArray(event) ? event : Array.from(event.target.files);
       // Filtra solo gli xlsx (anche da cartelle che contengono altro)
       const files = allFiles.filter(f => f.name.match(/\.(xlsx?|html?)$/i));
       const dz = document.getElementById('dropZone');
@@ -742,6 +761,166 @@
       }
     }
     
+    // ==================== CARTELLA COLLEGATA ====================
+    // Si sceglie la cartella una volta sola; il permesso viene ricordato dal
+    // browser e la pagina rilegge i report da sola a ogni apertura. Serve la
+    // File System Access API: c'e' su Chrome ed Edge, non su Safari.
+    // Non c'e' modo di fare di piu': un sito non puo' leggere il disco mentre
+    // non lo stai usando, e questa e' una protezione, non un limite da aggirare.
+    const FS_DB = 'mt5fa_fs', FS_STORE = 'handles', FS_KEY = 'cartellaReport';
+
+    function fsDb() {
+      return new Promise((ok, no) => {
+        const r = indexedDB.open(FS_DB, 1);
+        r.onupgradeneeded = () => r.result.createObjectStore(FS_STORE);
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => no(r.error);
+      });
+    }
+    async function fsSalva(handle) {
+      const db = await fsDb();
+      return new Promise((ok, no) => {
+        const tx = db.transaction(FS_STORE, 'readwrite');
+        tx.objectStore(FS_STORE).put(handle, FS_KEY);
+        tx.oncomplete = ok; tx.onerror = () => no(tx.error);
+      });
+    }
+    async function fsLeggi() {
+      try {
+        const db = await fsDb();
+        return await new Promise((ok, no) => {
+          const tx = db.transaction(FS_STORE, 'readonly');
+          const req = tx.objectStore(FS_STORE).get(FS_KEY);
+          req.onsuccess = () => ok(req.result || null);
+          req.onerror = () => no(req.error);
+        });
+      } catch (e) { return null; }
+    }
+    async function fsCancella() {
+      const db = await fsDb();
+      return new Promise(ok => {
+        const tx = db.transaction(FS_STORE, 'readwrite');
+        tx.objectStore(FS_STORE).delete(FS_KEY);
+        tx.oncomplete = ok;
+      });
+    }
+
+    const cartellaDisponibile = typeof window.showDirectoryPicker === 'function';
+
+    // Scende anche nelle sottocartelle: la cartella dei report e' divisa per broker.
+    async function fileDallaCartella(dir, dentro = '') {
+      const out = [];
+      for await (const [nome, h] of dir.entries()) {
+        if (h.kind === 'directory') {
+          // Una cartella che inizia con "_" viene saltata: serve a tenere da parte
+          // vecchi export o file che non devono entrare nei conti.
+          if (nome.startsWith('_') || nome.startsWith('.')) continue;
+          out.push(...await fileDallaCartella(h, dentro + nome + '/'));
+        } else if (/\.(xlsx?|html?)$/i.test(nome) && !nome.startsWith('.')) {
+          const f = await h.getFile();
+          // Il nome mostrato include la sottocartella, per capire da dove viene.
+          out.push(new File([f], dentro + nome, { type: f.type, lastModified: f.lastModified }));
+        }
+      }
+      return out;
+    }
+
+    async function collegaCartella() {
+      if (!cartellaDisponibile) return;
+      try {
+        const dir = await window.showDirectoryPicker({ id: 'mt5-report', mode: 'read' });
+        await fsSalva(dir);
+        await renderCartella();
+        await rileggiCartella();
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;     // l'utente ha annullato
+        showStatus('⚠️ Non sono riuscito a collegare la cartella: ' + (e.message || e), true);
+      }
+    }
+
+    async function scollegaCartella() {
+      await fsCancella();
+      await renderCartella();
+      showStatus('🔗 Cartella scollegata. I conti gia\' caricati restano.');
+    }
+
+    // La cartella e' la fonte di verita': i conti vengono rifatti da zero con
+    // quello che c'e' dentro adesso. Senza questo, sostituendo un export con uno
+    // piu' corto, l'app terrebbe quello vecchio rimasto in memoria.
+    async function rileggiCartella(silenzioso = false) {
+      const dir = await fsLeggi();
+      if (!dir) return false;
+      let perm = await dir.queryPermission({ mode: 'read' });
+      if (perm !== 'granted') {
+        if (silenzioso) { await renderCartella(); return false; }
+        perm = await dir.requestPermission({ mode: 'read' });
+        if (perm !== 'granted') {
+          showStatus('⚠️ Permesso negato sulla cartella: puoi sempre trascinare i file.', true);
+          return false;
+        }
+      }
+      let files;
+      try {
+        files = await fileDallaCartella(dir);
+      } catch (e) {
+        showStatus('⚠️ Non riesco a leggere la cartella collegata: ' + (e.message || e), true);
+        return false;
+      }
+      if (files.length === 0) {
+        showStatus('⚠️ Nella cartella ' + dir.name + ' non c\'e\' nessun report .xlsx o .html.', true);
+        await renderCartella();
+        return false;
+      }
+      accounts = []; yearlyData = {}; nomeFile = {};
+      await handleFiles(files);
+      await renderCartella(files.length);
+      return true;
+    }
+
+    async function renderCartella(quanti) {
+      const card = document.getElementById('cartellaCard');
+      const stato = document.getElementById('cartellaStato');
+      if (!cartellaDisponibile) {
+        card.style.display = 'block';
+        document.getElementById('btnCollega').style.display = 'none';
+        stato.innerHTML = '<div style="font-size:13px;color:var(--text-dim);">Questo browser non sa collegarsi a una cartella ' +
+          '(serve <strong>Chrome</strong> o <strong>Edge</strong>; Safari non lo supporta). ' +
+          'Qui sotto puoi comunque trascinare i file o scegliere la cartella a ogni caricamento.</div>';
+        return;
+      }
+      card.style.display = 'block';
+      const dir = await fsLeggi();
+      const bCollega = document.getElementById('btnCollega');
+      const bRileggi = document.getElementById('btnRileggi');
+      const bScollega = document.getElementById('btnScollega');
+      if (!dir) {
+        bCollega.style.display = ''; bCollega.textContent = '🔗 Collega una cartella';
+        bRileggi.style.display = 'none'; bScollega.style.display = 'none';
+        stato.innerHTML = '<div style="font-size:13px;color:var(--text-dim);">Nessuna cartella collegata.</div>';
+        return;
+      }
+      bCollega.style.display = ''; bCollega.textContent = '📁 Cambia cartella';
+      bRileggi.style.display = ''; bScollega.style.display = '';
+      const perm = await dir.queryPermission({ mode: 'read' });
+      const riga = quanti != null
+        ? `<span style="color:var(--green);">✅ ${quanti} report letti dalla cartella</span>`
+        : (perm === 'granted'
+            ? '<span style="color:var(--text-dim);">pronta: i report vengono riletti all\'apertura</span>'
+            : '<span style="color:var(--gold);">⚠️ serve il tuo permesso: premi "Rileggi ora"</span>');
+      stato.innerHTML = `<div style="font-size:13px;"><strong style="color:var(--text);">📁 ${dir.name}</strong> — ${riga}</div>`;
+    }
+
+    // All'apertura: se il permesso c'e' ancora, i report si ricaricano da soli.
+    (async () => {
+      await renderCartella();
+      if (!cartellaDisponibile) return;
+      const dir = await fsLeggi();
+      if (!dir) return;
+      if (await dir.queryPermission({ mode: 'read' }) === 'granted') {
+        await rileggiCartella(true);
+      }
+    })();
+
     // Nome del file da cui viene il report di ciascun conto, per poter dire
     // quale e' stato tenuto e quale scartato.
     let nomeFile = {};

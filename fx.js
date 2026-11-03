@@ -445,7 +445,7 @@
    -------------------------------------------------------------------------- */
 (function (root) {
   'use strict';
-  var VERSIONE = '3.2';
+  var VERSIONE = '3.3';
   var AGGIORNATA = '2026-11-03';           // ISO, giorno dell'ultima modifica
   var MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio',
               'agosto','settembre','ottobre','novembre','dicembre'];
