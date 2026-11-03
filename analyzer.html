@@ -6,7 +6,7 @@
   <title>MT5 Fiscal Analyzer v3 — Quadro RT & RW</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="fx.js?v=2026-11-03c"></script>
+  <script src="fx.js?v=2026-11-03d"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -690,6 +690,12 @@
       for (const file of files) {
         try {
           const acc = await processFile(file);
+          if (acc.accountNumber) {
+            const viste = societaViste[acc.accountNumber] = societaViste[acc.accountNumber] || [];
+            if (!viste.some(v => v.societa === acc.company)) {
+              viste.push({ societa: acc.company, dataReport: acc.dataReport || '', file: file.name });
+            }
+          }
           const sig = accountSignature(acc);
           // Stesso conto, stesso periodo, stessi trade: e' lo stesso report ricaricato.
           // Senza questo controllo bastava ritrascinare la cartella per raddoppiare
@@ -705,17 +711,12 @@
           const giaIdx = accounts.findIndex(a => a.accountNumber && a.accountNumber === acc.accountNumber);
           if (giaIdx !== -1) {
             const vecchio = accounts[giaIdx];
-            if (copreDiPiu(acc, vecchio)) {
-              scartati.push(`${file.name} sostituisce ${nomeFile[vecchio.accountNumber] || 'il report precedente'} ` +
-                `del conto ${acc.accountNumber}: ${acc.trades.length} operazioni contro ${vecchio.trades.length}` +
-                `${acc.dataReport ? ', generato il ' + acc.dataReport : ''}`);
-              accounts[giaIdx] = acc;
-              nomeFile[acc.accountNumber] = file.name;
-            } else {
-              scartati.push(`${file.name} NON caricato: del conto ${acc.accountNumber} c'e' gia' ` +
-                `${nomeFile[vecchio.accountNumber] || 'un report'} che copre di piu' ` +
-                `(${vecchio.trades.length} operazioni contro ${acc.trades.length})`);
-            }
+            const vince = copreDiPiu(acc, vecchio);
+            const tenuto = vince ? acc : vecchio, perso = vince ? vecchio : acc;
+            scartati.push(`${file.name}: del conto ${acc.accountNumber} si tiene ` +
+              `${vince ? file.name : (nomeFile[vecchio.accountNumber] || 'il report gia\' caricato')} — ` +
+              motivoScelta(tenuto, perso));
+            if (vince) { accounts[giaIdx] = acc; nomeFile[acc.accountNumber] = file.name; }
             continue;
           }
           accounts.push(acc);
@@ -871,7 +872,7 @@
         await renderCartella();
         return false;
       }
-      accounts = []; yearlyData = {}; nomeFile = {};
+      accounts = []; yearlyData = {}; nomeFile = {}; societaViste = {};
       await handleFiles(files);
       await renderCartella(files.length);
       return true;
@@ -925,6 +926,10 @@
     // quale e' stato tenuto e quale scartato.
     let nomeFile = {};
 
+    // Conti visti con piu' di una societa' intestataria fra un export e l'altro.
+    // { conto: [ {societa, dataReport, file}, ... ] }
+    let societaViste = {};
+
     // La riga "Date:" del report MT5 e' nel formato 2026.11.03 18:12.
     function dataReportISO(d) {
       const m = String(d || '').match(/^(\d{4})\.(\d{2})\.(\d{2})/);
@@ -946,12 +951,35 @@
       return String(nuovo.dataReport || '') > String(vecchio.dataReport || '');
     }
 
+    // Perche' un report ha vinto sull'altro: va detto con esattezza, altrimenti
+    // il messaggio parla di "copre di piu'" anche quando le operazioni sono le stesse.
+    function motivoScelta(tenuto, perso) {
+      if (tenuto.trades.length !== perso.trades.length) {
+        return `${tenuto.trades.length} operazioni contro ${perso.trades.length}`;
+      }
+      const ft = tenuto.maxDate ? tenuto.maxDate.getTime() : 0;
+      const fp = perso.maxDate ? perso.maxDate.getTime() : 0;
+      if (ft !== fp) {
+        return `stesse ${tenuto.trades.length} operazioni, ma arriva fino al ` +
+               `${tenuto.maxDate ? FX.toISO(tenuto.maxDate) : '?'} invece che al ${perso.maxDate ? FX.toISO(perso.maxDate) : '?'}`;
+      }
+      const diversa = tenuto.company !== perso.company
+        ? ` ATTENZIONE: cambia anche la societa' intestataria ("${tenuto.company}" invece di "${perso.company}"), e con essa il paese e l'aliquota IVAFE.`
+        : '';
+      return `stessi dati, ma generato il ${dataReportBreve(tenuto.dataReport) || '?'} invece che il ` +
+             `${dataReportBreve(perso.dataReport) || '?'}: si tiene il piu' recente.${diversa}`;
+    }
+
     // Firma di un report: stesso conto + stesso periodo + stessi trade = stesso file.
     function accountSignature(a) {
       const n = (a.trades || []).length;
       const min = a.minDate ? FX.toISO(a.minDate) : '-';
       const max = a.maxDate ? FX.toISO(a.maxDate) : '-';
-      return [a.accountNumber, n, min, max, (a.netProfit || 0).toFixed(2), (a.valoreFinale || 0).toFixed(2)].join('|');
+      // La societa' e la valuta entrano nella firma: due export con gli stessi
+      // trade ma intestati a societa' diverse NON sono lo stesso report, perche'
+      // la societa' decide paese, black list e aliquota IVAFE.
+      return [a.accountNumber, n, min, max, (a.netProfit || 0).toFixed(2), (a.valoreFinale || 0).toFixed(2),
+              a.company || '', a.currency || ''].join('|');
     }
 
     // Valute presenti nei conti caricati: l'euro non serve scaricarlo.
@@ -2029,6 +2057,29 @@
               ? 'Per questi conti non si riesce a leggere la data di generazione, quindi non si può verificare che coprano tutto l\'anno.'
               : 'Ogni report è stato generato dopo la fine dell\'anno a cui si riferisce: la copertura è completa.',
             senzaData);
+      }
+
+      // --- 4quater. Stesso conto, societa' diverse ---
+      // Caso vero sul conto 20804437: l'export di aprile lo dava intestato a
+      // Vantage International Group Limited (Cayman, black list, IVAFE 4 per
+      // mille), quello di agosto a Vantage Markets (Pty) Ltd. Stessi trade,
+      // stessi saldi, ma meta' IVAFE e trattamento sanzionatorio diverso.
+      const duePaesi = [];
+      Object.keys(societaViste).forEach(conto => {
+        const viste = societaViste[conto];
+        if (viste.length < 2) return;
+        duePaesi.push(`conto ${conto}: ` + viste.map(v =>
+          `"${v.societa}" (${v.file}${v.dataReport ? ', generato il ' + dataReportBreve(v.dataReport) : ''})`).join('  ·  ') +
+          ` — in uso: "${(accounts.find(a => a.accountNumber === conto) || {}).company || '?'}"`);
+      });
+      if (duePaesi.length) {
+        add('Stesso conto, societa\' diverse', 'error',
+            'Lo stesso conto risulta intestato a societa\' diverse in due export. Non e\' un errore di lettura: ' +
+            'e\' il broker che ha spostato il conto fra le proprie entita\', oppure un export e\' piu\' aggiornato dell\'altro. ' +
+            'Conta perche\' la societa\' decide il paese, e quindi se il conto e\' in un paese a fiscalita\' privilegiata: ' +
+            'cambia l\'aliquota IVAFE (2 o 4 per mille), il raddoppio delle sanzioni RW e i termini di accertamento. ' +
+            'L\'app tiene il report generato piu\' di recente: fatti dire dal broker con quale societa\' era intestato il conto ' +
+            'in quell\'anno, e tieni la risposta scritta.', duePaesi);
       }
 
       // --- 7ter. Conti in paesi a fiscalita' privilegiata ---

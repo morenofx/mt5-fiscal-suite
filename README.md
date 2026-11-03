@@ -60,6 +60,12 @@ due dello stesso conto conterebbe due volte le stesse operazioni. L'analyzer non
 - ogni scarto è **elencato per nome di file**, con il motivo: è l'unico modo per accorgersi di
   avere in cartella due export dello stesso conto.
 
+Due export con le **stesse operazioni** ma intestati a **società diverse** non sono lo stesso
+report: la società decide il paese, e quindi l'aliquota IVAFE, il raddoppio delle sanzioni RW e i
+termini di accertamento. L'app tiene il più recente e lo segnala come errore da chiarire col broker.
+È successo davvero: il conto `20804437` risulta `Vantage International Group Limited` (Cayman) in un
+export di aprile e `Vantage Markets (Pty) Ltd` in uno di agosto, a parità di trade e di saldi.
+
 Ogni conto mostra la data in cui il suo report è stato generato (riga `Date:` dell'export), sia a
 schermo sia nella tabella dei conti in copertina. Un controllo segnala i report generati **prima
 della fine di un anno chiuso**: non possono contenerlo tutto, e vanno riesportati. È il caso vero
