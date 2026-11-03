@@ -71,6 +71,21 @@ Nel calculator: righe duplicate (tabella incollata due volte), righe senza data 
 cambi mancanti, lordo non coerente col netto accreditato, righe inserite a mano, propri acquisti
 finiti fra le vendite, date future.
 
+## Paesi a fiscalità privilegiata e IVAFE
+
+L'aliquota IVAFE è il 2 per mille, elevato al **4 per mille dal 2024** (Legge di Bilancio 2024)
+per i prodotti finanziari detenuti negli Stati dell'elenco del **DM 4 maggio 1999**. Lo stesso
+elenco determina, sul quadro RW, il raddoppio delle sanzioni in caso di omissione e termini di
+accertamento più lunghi.
+
+L'elenco usato è quello del testo in vigore pubblicato dall'Agenzia delle Entrate: vi figurano
+`Isole Cayman (The Cayman Islands)` e `Seicelle (Republic of Seychelles)`, entrambe senza la nota
+di eliminazione che accompagna i paesi rimossi (Cipro e Malta col DM 27/7/2010, la Svizzera dal
+2024). L'aliquota applicata a ciascun conto è scritta sotto il relativo importo nei quadri RW.
+
+Attenzione: il paese dipende dalla **società** con cui è aperto il conto, non dal marchio del
+broker, e i broker migrano i conti fra le proprie entità. Va riletto dal report di ogni anno.
+
 ## Criterio di conversione, per app
 
 - **Analyzer:** ogni trade al cambio BCE del giorno di chiusura; saldi iniziali e finali al cambio

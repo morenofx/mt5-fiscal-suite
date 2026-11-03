@@ -6,7 +6,7 @@
   <title>MT5 Fiscal Analyzer v3 — Quadro RT & RW</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="fx.js?v=2026-08-10"></script>
+  <script src="fx.js?v=2026-11-03"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -290,19 +290,23 @@
       // IC Markets — Raw Trading Ltd è l'entità Seychelles (server SC)
       // Nota: Seychelles era in black list italiana (DM 4/5/1999), uscita di fatto nel 2017 dopo modifiche legislative
       // Per cautela manteniamo flag fino al 2017 (tutti i tuoi anni di trading sono dopo, quindi NON black list)
-      'raw trading': { code: '690', name: 'Seychelles', displayName: 'IC Markets (Raw Trading Ltd)', blackList: true, blackListUntil: 2017 },
+      // Le Seicelle sono nell'elenco del DM 4/5/1999 (testo in vigore sul sito
+      // dell'Agenzia delle Entrate): "Seicelle (Republic of Seychelles)", senza
+      // la nota di eliminazione che accompagna i paesi rimossi. Nessuna scadenza.
+      'raw trading': { code: '690', name: 'Seychelles', displayName: 'IC Markets (Raw Trading Ltd)', blackList: true },
       'international capital markets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false },
       'ic markets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false, generico: true },
       'icmarkets': { code: '036', name: 'Australia', displayName: 'IC Markets (AU)', blackList: false, generico: true },
       // Vantage — distinguere entità: International (Cayman) vs Global Prime (UK) vs altre
-      'vantage international': { code: '136', name: 'Cayman Islands', displayName: 'Vantage (Cayman)', blackList: true, blackListUntil: 2022 },
+      // Idem per le Cayman: "Isole Cayman (The Cayman Islands)" nello stesso elenco.
+      'vantage international': { code: '136', name: 'Cayman Islands', displayName: 'Vantage (Cayman)', blackList: true },
       'vantage global prime': { code: '036', name: 'Australia', displayName: 'Vantage Global Prime (AU)', blackList: false },
       'vantage global': { code: '826', name: 'Regno Unito', displayName: 'Vantage (UK)', blackList: false },
       'vantage markets (pty)': { code: '078', name: 'Sudafrica', displayName: 'Vantage Markets (Pty) Ltd', blackList: false },
       'vantage markets pty': { code: '078', name: 'Sudafrica', displayName: 'Vantage Markets (Pty) Ltd', blackList: false },
       // Regola generica: si applica quando l'entita' giuridica non e' riconosciuta.
       // Il paese che ne esce e' un'ipotesi, non un dato: viene segnalato nella verifica.
-      'vantage': { code: '136', name: 'Cayman Islands', displayName: 'Vantage', blackList: true, blackListUntil: 2022, generico: true },
+      'vantage': { code: '136', name: 'Cayman Islands', displayName: 'Vantage', blackList: true, generico: true },
       // AxiCorp — Pty Ltd = Australia, AxiCorp Limited = UK
       'axicorp financial services pty': { code: '036', name: 'Australia', displayName: 'AxiCorp (AU)', blackList: false },
       'axicorp limited': { code: '826', name: 'Regno Unito', displayName: 'Axi (UK)', blackList: false },
@@ -1298,7 +1302,8 @@
           
           // IVAFE: 0,2% sul valore medio annuo proporzionato ai giorni
           const medio = (a.valoreInizialeEUR + a.valoreFinaleEUR) / 2;
-          a.ivafe = medio * 0.002 * (a.giorni / 365);
+          a.aliquotaIvafe = aliquotaIvafe(a.countryInfo, year);
+          a.ivafe = medio * a.aliquotaIvafe * (a.giorni / 365);
           
           d.totals.trades += a.trades; d.totals.wins += a.wins; d.totals.losses += a.losses;
           d.totals.grossProfit += a.grossProfitEUR; d.totals.grossLoss += a.grossLossEUR;
@@ -1452,7 +1457,7 @@
         <div class="stat-card"><div class="stat-number text-accent">${totalTrades}</div><div class="stat-label">Trade</div></div>
         <div class="stat-card"><div class="stat-number ${totalProfit >= 0 ? 'text-green' : 'text-red'}">€${totalProfit.toFixed(0)}</div><div class="stat-label">Profitto Netto</div></div>
         <div class="stat-card"><div class="stat-number text-red">€${totalRT.toFixed(0)}</div><div class="stat-label">Imposta RT 26%</div></div>
-        <div class="stat-card"><div class="stat-number text-gold">€${totalIVAFE.toFixed(0)}</div><div class="stat-label">IVAFE 0.2%</div></div>
+        <div class="stat-card"><div class="stat-number text-gold">€${totalIVAFE.toFixed(0)}</div><div class="stat-label">IVAFE</div></div>
         <div class="stat-card"><div class="stat-number text-purple">€${(totalRT + totalIVAFE).toFixed(0)}</div><div class="stat-label">Totale Imposte</div></div>
       `;
       
@@ -1476,7 +1481,7 @@
           const promoTag = Math.abs(a.yearPromoEUR || 0) > 0.005 ? `<div class="account-stat"><div class="label">Promo broker</div><div class="value" style="color:#f472b6">€${a.yearPromoEUR.toFixed(2)}</div></div>` : '';
           
           // Badge sotto il nome broker, non accanto (evita overflow su layout stretto)
-          const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
+          const isBlackListYear = inBlackList(a.countryInfo, year);
           const onlyBalance = a.trades === 0 && (a.valoreInizialeEUR > 0 || a.valoreFinaleEUR > 0);
           let badges = '';
           if (isBlackListYear) badges += `<span style="display:inline-block;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#f87171;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:600;margin:2px 2px 0 0;white-space:nowrap;">⚠️ BLACK LIST</span>`;
@@ -1546,7 +1551,7 @@
         type:'bar',
         data:{labels:years, datasets:[
           {label:'RT 26%', data:rtY, backgroundColor:R},
-          {label:'IVAFE 0,2%', data:ivY, backgroundColor:GD}
+          {label:'IVAFE', data:ivY, backgroundColor:GD}
         ]},
         options:{maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}}
       }));
@@ -1733,6 +1738,23 @@
           rt.length ? 'Corrispettivi meno costi non danno la plusvalenza dichiarata.'
                     : 'Per ogni anno RT21 − RT22 = RT23.', rt);
 
+      // --- 7ter. Conti in paesi a fiscalita' privilegiata ---
+      // Non e' un errore da correggere: e' una circostanza che cambia aliquota,
+      // sanzioni e termini, e che il commercialista deve sapere.
+      const bl = [];
+      Object.keys(yearlyData).sort().forEach(y => {
+        Object.values(yearlyData[y].accounts).forEach(a => {
+          if (!inBlackList(a.countryInfo, y)) return;
+          bl.push(`${y} · conto ${a.accountNumber} · ${a.countryInfo.name} (${a.countryInfo.code}) · ` +
+                  `giacenza finale € ${a.valoreFinaleEUR.toFixed(2)} · IVAFE € ${a.ivafe.toFixed(2)} ` +
+                  `al ${((a.aliquotaIvafe || 0.002) * 1000).toFixed(0)} per mille`);
+        });
+      });
+      if (bl.length) {
+        add('Conti in paesi a fiscalità privilegiata', 'warn',
+            'Questi conti sono aperti con società di Stati inclusi nell\'elenco del DM 4/5/1999. Tre conseguenze: IVAFE al 4 per mille invece del 2 dal 2024 (Legge di Bilancio 2024), sanzioni del quadro RW raddoppiate in caso di omissione, e termini di accertamento più lunghi. Non c\'è niente da correggere nei dati: va detto al commercialista, perché cambia il trattamento.', bl);
+      }
+
       // --- 8bis. Controparti dei giroconti di cui manca il report ---
       // Un giroconto verso un conto non caricato significa denaro che esce dal
       // perimetro monitorato: se quel conto e' del contribuente, la sua giacenza
@@ -1871,6 +1893,22 @@
       return `<p style="margin-top:8px;font-size:11px;color:#166534;">Verifica dati: tutti i ${tot} controlli superati. Il saldo finale di ogni conto coincide con movimenti di cassa e risultato dei trade.</p>`;
     }
 
+    // Un conto e' in paese a fiscalita' privilegiata, per un dato anno, se il
+    // suo paese e' nell'elenco del DM 4/5/1999 e non ne era ancora uscito.
+    // Conseguenze: IVAFE maggiorata e, sul quadro RW, sanzioni raddoppiate e
+    // termini di accertamento piu' lunghi.
+    function inBlackList(countryInfo, year) {
+      if (!countryInfo || !countryInfo.blackList) return false;
+      return !countryInfo.blackListUntil || parseInt(year, 10) <= countryInfo.blackListUntil;
+    }
+
+    // Aliquota IVAFE dell'anno: 2 per mille ordinario, 4 per mille per i prodotti
+    // finanziari detenuti in Stati a fiscalita' privilegiata. La maggiorazione e'
+    // stata introdotta dalla Legge di Bilancio 2024, quindi vale dal 2024 in poi.
+    function aliquotaIvafe(countryInfo, year) {
+      return (parseInt(year, 10) >= 2024 && inBlackList(countryInfo, year)) ? 0.004 : 0.002;
+    }
+
     // Un anno non ancora concluso produce numeri provvisori: va detto, sia a
     // schermo sia sui documenti stampati.
     function annoProvvisorio(year) {
@@ -1951,7 +1989,7 @@
       Object.values(d.accounts).forEach((a, i) => {
         const bonusEur = (a.yearRate != null ? a.totalBonusCredits * a.yearRate : 0);
         const bonusNote = a.totalBonusCredits > 0 ? `<div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:12px;color:#92400e">⚠️ Bonus/Credit escluso: € ${bonusEur.toFixed(2)} (non prelevabile)</div>` : '';
-        const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
+        const isBlackListYear = inBlackList(a.countryInfo, year);
         const blNote = isBlackListYear ? `<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;font-size:12px;color:#991b1b"><strong>⚠️ PAESE BLACK LIST (anno ${year}):</strong> sanzioni RW raddoppiate (6-30%), prescrizione 8 anni</div>` : '';
         let movNote = '';
         if (a.yearDeposits > 0 || a.yearWithdrawals > 0 || a.yearInternalIn > 0 || a.yearInternalOut > 0 || Math.abs(a.yearPromo || 0) > 0.005) {
@@ -1973,7 +2011,7 @@
             <div><strong>Valore Iniziale:</strong> € ${a.valoreInizialeEUR.toFixed(2)}</div><div><strong>Valore Finale:</strong> € ${a.valoreFinaleEUR.toFixed(2)}</div>
             ${movNote}
           </div>${bonusNote}${blNote}
-          <div style="margin-top:16px;padding-top:12px;border-top:1px solid #bbf7d0;text-align:right"><span style="font-size:18px;font-weight:700;color:#ca8a04">IVAFE: € ${a.ivafe.toFixed(2)}</span></div>
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid #bbf7d0;text-align:right"><span style="font-size:18px;font-weight:700;color:#ca8a04">IVAFE: € ${a.ivafe.toFixed(2)}</span><div style="font-size:11px;color:#666;">aliquota ${((a.aliquotaIvafe || 0.002) * 1000).toFixed(0)} per mille${(a.aliquotaIvafe === 0.004) ? ' (paese a fiscalità privilegiata)' : ''} · ${a.giorni} giorni su 365</div></div>
         </div>`;
       });
       
@@ -1985,7 +2023,7 @@
           <div class="header"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year} • Generato il ${new Date().toLocaleDateString('it-IT')}</div></div>
           <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${accHTML}</div>
           <div class="hl"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
-          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
+          <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 2 per mille sul valore proporzionato ai giorni di detenzione, elevata a <strong>4 per mille dal 2024</strong> per i prodotti finanziari detenuti negli Stati del DM 4/5/1999 (Legge di Bilancio 2024). L'aliquota applicata a ciascun conto è indicata sotto il relativo importo.</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
           <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RW_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
@@ -2040,7 +2078,7 @@
         Object.values(d.accounts).forEach((a, i) => {
           const bonusEur = (a.yearRate != null ? a.totalBonusCredits * a.yearRate : 0);
           const bonusNote = a.totalBonusCredits > 0 ? `<div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:12px;color:#92400e">⚠️ Bonus/Credit escluso: € ${bonusEur.toFixed(2)} (non prelevabile)</div>` : '';
-          const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
+          const isBlackListYear = inBlackList(a.countryInfo, year);
           const blNote = isBlackListYear ? `<div style="margin-top:8px;padding:8px 12px;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;font-size:12px;color:#991b1b"><strong>⚠️ PAESE BLACK LIST (anno ${year}):</strong> sanzioni RW raddoppiate (6-30%), prescrizione 8 anni</div>` : '';
           let movNote = '';
           if (a.yearDeposits > 0 || a.yearWithdrawals > 0 || a.yearInternalIn > 0 || a.yearInternalOut > 0 || Math.abs(a.yearPromo || 0) > 0.005) {
@@ -2062,7 +2100,7 @@
               <div><strong>Valore Iniziale:</strong> € ${a.valoreInizialeEUR.toFixed(2)}</div><div><strong>Valore Finale:</strong> € ${a.valoreFinaleEUR.toFixed(2)}</div>
               ${movNote}
             </div>${bonusNote}${blNote}
-            <div style="margin-top:16px;padding-top:12px;border-top:1px solid #bbf7d0;text-align:right"><span style="font-size:18px;font-weight:700;color:#ca8a04">IVAFE: € ${a.ivafe.toFixed(2)}</span></div>
+            <div style="margin-top:16px;padding-top:12px;border-top:1px solid #bbf7d0;text-align:right"><span style="font-size:18px;font-weight:700;color:#ca8a04">IVAFE: € ${a.ivafe.toFixed(2)}</span><div style="font-size:11px;color:#666;">aliquota ${((a.aliquotaIvafe || 0.002) * 1000).toFixed(0)} per mille${(a.aliquotaIvafe === 0.004) ? ' (paese a fiscalità privilegiata)' : ''} · ${a.giorni} giorni su 365</div></div>
           </div>`;
         });
         
@@ -2071,7 +2109,7 @@
             <div class="header-rw"><h1>🌍 QUADRO RW — MONITORAGGIO FISCALE</h1><div class="sub">Anno d'imposta ${year}</div></div>
             <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${rwAccounts}</div>
             <div class="hl-rw"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
-            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 0.2% sul valore medio annuo proporzionato ai giorni</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
+            <div class="info-rw"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 2 per mille sul valore proporzionato ai giorni di detenzione, elevata a <strong>4 per mille dal 2024</strong> per i prodotti finanziari detenuti negli Stati del DM 4/5/1999 (Legge di Bilancio 2024). L'aliquota applicata a ciascun conto è indicata sotto il relativo importo.</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
           </div>
         `;
       });
@@ -2274,7 +2312,7 @@
         Object.values(d.accounts).forEach(a => {
           const imp = a.netProfitEUR > 0 ? (a.netProfitEUR * 0.26).toFixed(2) : '0.00';
           const rl = a.yearRateLabel || '';
-          const isBlackListYear = a.countryInfo.blackList && (!a.countryInfo.blackListUntil || parseInt(year) <= a.countryInfo.blackListUntil);
+          const isBlackListYear = inBlackList(a.countryInfo, year);
           const brokerLabel = a.displayCompany || a.company;
           csv += `${year},${a.accountNumber},"${brokerLabel}","${a.company}","${a.countryInfo.name}",${a.countryInfo.code},${isBlackListYear ? 'SI' : 'NO'},${a.currency},${a.trades},${a.grossProfitEUR.toFixed(2)},${Math.abs(a.grossLossEUR).toFixed(2)},${a.netProfitEUR.toFixed(2)},${imp},${a.valoreInizialeEUR.toFixed(2)},${a.valoreFinaleEUR.toFixed(2)},${a.giorni},${a.ivafe.toFixed(2)},${(a.yearDepositsEUR||0).toFixed(2)},${(a.yearWithdrawalsEUR||0).toFixed(2)},${(a.yearInternalInEUR||0).toFixed(2)},${(a.yearInternalOutEUR||0).toFixed(2)},"${rl}"\n`;
         });
