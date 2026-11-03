@@ -195,6 +195,20 @@
     
     <div id="statusMsg"></div>
     
+    <!-- Dati del contribuente -->
+    <div class="card">
+      <div class="card-title">🧾 Dati per il documento</div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
+        Compaiono solo sui PDF che generi, in copertina. Restano su questo dispositivo: non vengono inviati da nessuna parte.
+      </p>
+      <div class="form-row">
+        <div class="form-group"><label>Intestatario</label>
+          <input type="text" id="con_nome" placeholder="Nome Cognome" oninput="saveToStorage()"></div>
+        <div class="form-group"><label>Codice fiscale</label>
+          <input type="text" id="con_cf" placeholder="facoltativo" oninput="saveToStorage()"></div>
+      </div>
+    </div>
+
     <!-- Drop Zone -->
     <div class="card">
       <div class="card-title">📂 Carica Report MT5</div>
@@ -515,6 +529,10 @@
           maxDate: a.maxDate?.toISOString() || null
         }));
         localStorage.setItem('mt5fa_accounts', JSON.stringify(toSave));
+        localStorage.setItem('mt5fa_contribuente', JSON.stringify({
+          nome: (document.getElementById('con_nome') || {}).value || '',
+          cf: (document.getElementById('con_cf') || {}).value || ''
+        }));
         localStorage.setItem('mt5fa_controparti', JSON.stringify(contropartiOk));
         localStorage.setItem('mt5fa_yearmode', JSON.stringify(yearMode));
         localStorage.setItem('mt5fa_yearfixed', JSON.stringify(yearFixed));
@@ -532,6 +550,13 @@
           minDate: a.minDate ? new Date(a.minDate) : null,
           maxDate: a.maxDate ? new Date(a.maxDate) : null
         }));
+        const dc = localStorage.getItem('mt5fa_contribuente');
+        if (dc) {
+          const d = JSON.parse(dc);
+          const n = document.getElementById('con_nome'), c = document.getElementById('con_cf');
+          if (n) n.value = d.nome || '';
+          if (c) c.value = d.cf || '';
+        }
         const cp = localStorage.getItem('mt5fa_controparti');
         if (cp) contropartiOk = JSON.parse(cp);
         const m = localStorage.getItem('mt5fa_yearmode');
@@ -2117,6 +2142,135 @@
       return allSections;
     }
     
+    // Copertina del documento consegnato al commercialista.
+    // Chi lo riceve non conosce i conti ne' la loro storia: deve trovare in una
+    // pagina i numeri da riportare, da dove escono, le scelte che sono state
+    // fatte al posto suo e cio' che il documento NON copre.
+    function copertinaHtml(years) {
+      const nome = ((document.getElementById('con_nome') || {}).value || '').trim();
+      const cf = ((document.getElementById('con_cf') || {}).value || '').trim();
+      const oggi = new Date().toLocaleDateString('it-IT');
+
+      const righeAnni = years.map(y => {
+        const t = yearlyData[y].totals;
+        const imp = t.netProfit > 0 ? t.netProfit * 0.26 : 0;
+        const prov = annoProvvisorio(y) ? ' <span style="color:#92400e;">(provvisorio)</span>' : '';
+        return `<tr>
+          <td><strong>${y}</strong>${prov}</td>
+          <td style="text-align:right">€ ${t.grossProfit.toFixed(2)}</td>
+          <td style="text-align:right">€ ${Math.abs(t.grossLoss).toFixed(2)}</td>
+          <td style="text-align:right;font-weight:bold">€ ${t.netProfit.toFixed(2)}</td>
+          <td style="text-align:right;color:#b91c1c">€ ${imp.toFixed(2)}</td>
+          <td style="text-align:right">€ ${t.valoreFinale.toFixed(2)}</td>
+          <td style="text-align:right;color:#a16207">€ ${t.ivafe.toFixed(2)}</td>
+        </tr>`;
+      }).join('');
+
+      // elenco conti dell'ultimo anno: e' la fotografia che serve per il quadro RW
+      const ultimo = years[years.length - 1];
+      const conti = Object.values(yearlyData[ultimo].accounts).sort((a, b) => b.valoreFinaleEUR - a.valoreFinaleEUR).map(a => {
+        const bl = inBlackList(a.countryInfo, ultimo);
+        return `<tr${bl ? ' style="background:#fef2f2"' : ''}>
+          <td>${a.accountNumber}</td>
+          <td>${a.displayCompany || a.company}${a.company && a.displayCompany !== a.company ? `<br><span style="font-size:9px;color:#666">${a.company}</span>` : ''}</td>
+          <td>${a.countryInfo.name} (${a.countryInfo.code})${bl ? ' <strong style="color:#b91c1c">BL</strong>' : ''}</td>
+          <td>${a.currency}</td>
+          <td style="text-align:right">€ ${a.valoreFinaleEUR.toFixed(2)}</td>
+          <td style="text-align:right">${a.giorni}</td>
+          <td style="text-align:right">${((a.aliquotaIvafe || 0.002) * 1000).toFixed(0)}‰</td>
+          <td style="text-align:right">€ ${a.ivafe.toFixed(2)}</td>
+        </tr>`;
+      }).join('');
+
+      const cp = Object.keys(contropartiOk).sort();
+      const escluse = cp.length
+        ? `<ul style="margin:6px 0 0 18px;">${cp.map(t => `<li><strong>${t}</strong> — ${contropartiOk[t].nota}</li>`).join('')}</ul>`
+        : '<p style="margin:6px 0 0 0;">Nessun conto collegato escluso.</p>';
+
+      // Le segnalazioni non sono errori, ma nemmeno un "tutto a posto": chi legge
+      // deve sapere che ci sono punti che richiedono una sua valutazione.
+      const nErr = (ultimaVerifica || []).filter(c => c.esito === 'error').length;
+      const nWarn = (ultimaVerifica || []).filter(c => c.esito === 'warn').length;
+      const nTot = (ultimaVerifica || []).length;
+      let esito;
+      if (!ultimaVerifica) esito = 'non eseguita';
+      else if (nErr > 0) esito = `<strong style="color:#b91c1c">${nErr} controlli non superati</strong> su ${nTot}` +
+        (nWarn ? `, più ${nWarn} segnalazioni` : '') + ' — il dettaglio è nell\'applicazione';
+      else if (nWarn > 0) esito = `<strong style="color:#166534">nessun errore</strong>: ${nTot - nWarn} controlli superati su ${nTot}, ` +
+        `<strong style="color:#92400e">${nWarn} segnalazioni</strong> che richiedono una valutazione ` +
+        `(${ultimaVerifica.filter(c => c.esito === 'warn').map(c => c.titolo.toLowerCase()).join('; ')})`;
+      else esito = `<strong style="color:#166534">tutti i ${nTot} controlli superati</strong>`;
+
+      return `<div class="quadro-page">
+        <div class="header-rt" style="border-bottom-color:#1e40af">
+          <h1>📄 DOCUMENTO DI SINTESI PER IL COMMERCIALISTA</h1>
+          <div class="sub">
+            ${nome ? `<strong>${nome}</strong>` : '<em>intestatario non indicato</em>'}${cf ? ` · C.F. ${cf}` : ''}
+            &nbsp;·&nbsp; Redditi di fonte estera da trading su conti presso intermediari non residenti
+            &nbsp;·&nbsp; Documento generato il ${oggi}
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>📊 Importi per anno d'imposta</h2>
+          <table>
+            <thead><tr>
+              <th>Anno</th><th>RT21 corrispettivi</th><th>RT22 costi</th><th>RT23 plusvalenza</th>
+              <th>Imposta 26%</th><th>Giacenza al 31/12</th><th>IVAFE</th>
+            </tr></thead>
+            <tbody>${righeAnni}</tbody>
+          </table>
+          <p style="font-size:11px;color:#555;margin-top:8px;">
+            RT21 è la somma dei differenziali positivi, RT22 la somma dei differenziali negativi:
+            RT21 − RT22 = RT23. Ogni risultato è al netto di commissioni e swap addebitati sulla posizione.
+          </p>
+        </div>
+
+        <div class="section">
+          <h2>🌍 Conti esteri al ${ultimo} — dati per il quadro RW</h2>
+          <table>
+            <thead><tr>
+              <th>Conto</th><th>Intermediario</th><th>Paese</th><th>Valuta</th>
+              <th>Valore finale</th><th>Giorni</th><th>Aliq.</th><th>IVAFE</th>
+            </tr></thead>
+            <tbody>${conti}</tbody>
+          </table>
+          <p style="font-size:11px;color:#555;margin-top:8px;">
+            <strong>BL</strong> = intermediario con sede in uno Stato dell'elenco del DM 4/5/1999: IVAFE al 4 per mille
+            dal 2024 (L. 213/2023), sanzioni del quadro RW raddoppiate e termini di accertamento più lunghi.
+            Il paese è quello della <em>società</em> con cui è aperto il conto, letta dal report del broker.
+          </p>
+        </div>
+
+        <div class="info" style="background:#fffbeb;border-left-color:#d97706">
+          <strong>⚖️ Scelte applicate, da confermare</strong>
+          <ul style="margin-top:8px;margin-left:20px">
+            <li><strong>Base IVAFE:</strong> media fra valore iniziale e valore finale del periodo di detenzione,
+                proporzionata ai giorni. Se si preferisce il solo valore di fine periodo, l'importo va ricalcolato.</li>
+            <li><strong>Quadro RT:</strong> corrispettivi e costi esposti come somma dei differenziali rispettivamente
+                positivi e negativi delle posizioni chiuse.</li>
+            <li><strong>Conversione valutaria:</strong> cambio di riferimento BCE del giorno di ciascuna operazione;
+                per i giorni non quotati l'ultima rilevazione precedente. Saldi convertiti al cambio della rispettiva
+                data di riferimento.</li>
+          </ul>
+        </div>
+
+        <div class="info" style="background:#f0fdf4;border-left-color:#16a34a">
+          <strong>📌 Cosa questo documento NON contiene</strong>
+          <p style="margin-top:6px;">Copre esclusivamente i conti di trading MetaTrader 5 elencati sopra. Restano fuori,
+          e vanno trattati separatamente: eventuali provvigioni da conti di segnalazione o affiliazione, i compensi
+          per vendite su piattaforme di prodotti, e i conti collegati chiusi o non esportabili qui di seguito.</p>
+          ${escluse}
+        </div>
+
+        <p style="font-size:11px;color:#555;margin-top:14px;">
+          <strong>Verifica dei dati:</strong> ${esito}. Il controllo portante è la quadratura contabile: per ogni conto
+          il saldo finale del report deve coincidere con i movimenti di cassa più il risultato delle operazioni.
+          I quadri di dettaglio seguono nelle pagine successive.
+        </p>
+      </div>`;
+    }
+
     // CSS condiviso per i PDF generati
     const PDF_CSS = `
       *{box-sizing:border-box;margin:0;padding:0}
@@ -2184,7 +2338,7 @@
       const years = Object.keys(yearlyData).sort();
       if (years.length === 0) { showStatus('⚠️ Nessun dato da esportare', true); return; }
 
-      const allSections = chartsImagesHtml() + buildQuadriHtml(years);
+      const allSections = copertinaHtml(years) + chartsImagesHtml() + buildQuadriHtml(years);
       const filename = `Quadri_RT_RW_${years[0]}-${years[years.length-1]}.pdf`;
       const title = `Quadri RT + RW — ${years.length === 1 ? 'Anno ' + years[0] : 'Anni ' + years[0] + '-' + years[years.length-1]}`;
       
@@ -2223,7 +2377,7 @@
       let yearButtons = '';
       
       years.forEach((year, idx) => {
-        const yearSections = buildQuadriHtml([year]);
+        const yearSections = copertinaHtml([year]) + buildQuadriHtml([year]);
         const containerId = `year_${year}`;
         const filename = `Quadri_RT_RW_${year}.pdf`;
         const t = yearlyData[year].totals;
