@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MQL5 Proventi Calculator</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
-<script src="fx.js?v=2026-11-03"></script>
+<script src="fx.js?v=2026-11-03b"></script>
 <style>
 * { box-sizing: border-box; font-family: -apple-system, system-ui, sans-serif; }
 body { background: #0f172a; color: #e2e8f0; padding: 20px; max-width: 1200px; margin: 0 auto; }
@@ -204,6 +204,8 @@ Convenzione usata ovunque nell'app: <strong>1 USD = X EUR</strong> (es. 0.9243).
 <div id="summary"></div>
 <button onclick="generatePDF()" class="success big">📄 Stampa / Salva PDF</button>
 </div>
+
+<div id="appFooter" style="margin:24px 0 8px;text-align:center;font-size:12px;color:#888;"></div>
 
 <script>
 let products = [];
@@ -1195,13 +1197,17 @@ function generatePDF() {
     </div>
 
     <p style="margin-top: 30px; font-size: 9px; color: #888; border-top: 1px solid #ddd; padding-top: 10px;">
-    Documento riepilogativo generato da MQL5 Proventi Calculator. I dati di dettaglio delle singole transazioni provengono dall'area "Payments" del profilo personale MQL5.com. Ogni riga riporta il cambio applicato e la sua fonte, così che ogni importo in euro sia verificabile. Documento di supporto: il trattamento IVA delle operazioni va concordato con il proprio consulente fiscale.${avvisoAltriAnni}
+    ${SUITE.label}. Documento riepilogativo generato da MQL5 Proventi Calculator. I dati di dettaglio delle singole transazioni provengono dall'area "Payments" del profilo personale MQL5.com. Ogni riga riporta il cambio applicato e la sua fonte, così che ogni importo in euro sia verificabile. Documento di supporto: il trattamento IVA delle operazioni va concordato con il proprio consulente fiscale.${avvisoAltriAnni}
     </p>
 
     <scr`+`ipt>setTimeout(()=>window.print(),500);</scr`+`ipt>
     </body></html>`);
     w.document.close();
 }
+
+// Versione e data dell'ultimo aggiornamento, da fx.js (unico punto).
+document.getElementById('appFooter').textContent =
+  SUITE.label + ' · i dati restano su questo dispositivo';
 
 loadState();
 renderProducts();

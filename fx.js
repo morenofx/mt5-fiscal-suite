@@ -436,3 +436,30 @@
     _store: store
   };
 })(window);
+
+/* -----------------------------------------------------------------------------
+   Versione e data dell'ultimo aggiornamento della suite.
+   UNICO punto da cambiare: le tre pagine e tutti i PDF leggono da qui, cosi'
+   la data stampata sui documenti non puo' divergere dal codice che li ha
+   prodotti. Da aggiornare a ogni modifica di una qualsiasi pagina.
+   -------------------------------------------------------------------------- */
+(function (root) {
+  'use strict';
+  var VERSIONE = '3.2';
+  var AGGIORNATA = '2026-11-03';           // ISO, giorno dell'ultima modifica
+  var MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio',
+              'agosto','settembre','ottobre','novembre','dicembre'];
+
+  function dataLunga() {
+    var p = AGGIORNATA.split('-');
+    return parseInt(p[2], 10) + ' ' + MESI[parseInt(p[1], 10) - 1] + ' ' + p[0];
+  }
+
+  root.SUITE = {
+    version: VERSIONE,
+    updated: AGGIORNATA,
+    updatedLong: dataLunga(),
+    // Riga unica da mettere in fondo a schermo e nei PDF.
+    label: 'MT5 Fiscal Suite v' + VERSIONE + ' — ultimo aggiornamento ' + dataLunga()
+  };
+})(window);

@@ -6,7 +6,7 @@
   <title>MT5 Fiscal Analyzer v3 — Quadro RT & RW</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="fx.js?v=2026-11-03"></script>
+  <script src="fx.js?v=2026-11-03b"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -275,6 +275,8 @@
         </div>
       </div>
     </div>
+    
+    <div id="appFooter" style="margin:28px 0 8px;text-align:center;font-size:12px;color:var(--text-dim);"></div>
     
   </div>
 
@@ -664,7 +666,8 @@
       
       let processed = 0, errors = 0, duplicati = 0;
       const errorList = [];
-      const sovrapposti = new Set();
+      const scartati = [];          // report scartati perche' il conto c'era gia'
+      nomeFile = nomeFile || {};
       for (const file of files) {
         try {
           const acc = await processFile(file);
@@ -672,12 +675,32 @@
           // Stesso conto, stesso periodo, stessi trade: e' lo stesso report ricaricato.
           // Senza questo controllo bastava ritrascinare la cartella per raddoppiare
           // profitti e imposte.
-          if (accounts.some(a => accountSignature(a) === sig)) { duplicati++; continue; }
-          // Stesso conto ma periodo diverso: possibile sovrapposizione di report.
-          if (acc.accountNumber && accounts.some(a => a.accountNumber === acc.accountNumber)) {
-            sovrapposti.add(acc.accountNumber);
+          if (accounts.some(a => accountSignature(a) === sig)) {
+            duplicati++;
+            scartati.push(`${file.name}: identico a un report gia' caricato del conto ${acc.accountNumber}`);
+            continue;
+          }
+          // Stesso conto, report diverso: UNO SOLO puo' entrare, altrimenti le sue
+          // operazioni verrebbero contate due volte. Si tiene quello che copre di
+          // piu'; l'altro viene scartato e detto.
+          const giaIdx = accounts.findIndex(a => a.accountNumber && a.accountNumber === acc.accountNumber);
+          if (giaIdx !== -1) {
+            const vecchio = accounts[giaIdx];
+            if (copreDiPiu(acc, vecchio)) {
+              scartati.push(`${file.name} sostituisce ${nomeFile[vecchio.accountNumber] || 'il report precedente'} ` +
+                `del conto ${acc.accountNumber}: ${acc.trades.length} operazioni contro ${vecchio.trades.length}` +
+                `${acc.dataReport ? ', generato il ' + acc.dataReport : ''}`);
+              accounts[giaIdx] = acc;
+              nomeFile[acc.accountNumber] = file.name;
+            } else {
+              scartati.push(`${file.name} NON caricato: del conto ${acc.accountNumber} c'e' gia' ` +
+                `${nomeFile[vecchio.accountNumber] || 'un report'} che copre di piu' ` +
+                `(${vecchio.trades.length} operazioni contro ${acc.trades.length})`);
+            }
+            continue;
           }
           accounts.push(acc);
+          nomeFile[acc.accountNumber] = file.name;
           processed++;
         } catch (e) {
           errors++;
@@ -701,12 +724,17 @@
 
         const errorMsg = errors > 0 ? ` <span style="color:#fbbf24">(${errors} errori)</span>` : '';
         if (errors > 0) showStatus('❌ File non letti:<br>' + errorList.map(x => '• ' + x).join('<br>'), true);
-        const dupMsg = duplicati > 0 ? ` <span style="color:#fbbf24">• ${duplicati} file già caricati, ignorati</span>` : '';
+        const dupMsg = scartati.length > 0 ? ` <span style="color:#fbbf24">• ${scartati.length} report scartati</span>` : '';
         const rilevazioni = collectCurrencies().reduce((n, c) => n + FX.coverage(c).observations, 0);
         dz.innerHTML = `<div class="icon">📁</div><p>Trascina altri file o clicca</p><p class="hint">✅ ${accounts.length} account caricati • ${rilevazioni} rilevazioni BCE${errorMsg}${dupMsg}</p>`;
         if (errors > 0) console.warn('File con errori:', errorList);
-        if (duplicati > 0) showStatus(`ℹ️ ${duplicati} report erano già caricati (stesso conto, stesso periodo, stessi trade): ignorati per non contarli due volte.`);
-        if (sovrapposti.size > 0) showStatus(`⚠️ Attenzione: per il conto ${Array.from(sovrapposti).join(', ')} hai caricato più report con periodi diversi. Se i periodi si sovrappongono, alcuni trade vengono contati due volte: usa un solo report che copra tutto il periodo.`, true);
+        // Ogni scarto va detto per esteso: e' l'unico modo per accorgersi di aver
+        // messo in cartella due export dello stesso conto.
+        if (scartati.length > 0) {
+          showStatus('📄 Un solo report per conto: ' + scartati.length +
+            (scartati.length === 1 ? ' file scartato' : ' file scartati') +
+            '<br>' + scartati.map(x => '• ' + x).join('<br>'));
+        }
         document.getElementById('currencySection').style.display = 'block';
         consolidateData(); renderResults(); saveToStorage();
       } else {
@@ -714,6 +742,31 @@
       }
     }
     
+    // Nome del file da cui viene il report di ciascun conto, per poter dire
+    // quale e' stato tenuto e quale scartato.
+    let nomeFile = {};
+
+    // La riga "Date:" del report MT5 e' nel formato 2026.11.03 18:12.
+    function dataReportISO(d) {
+      const m = String(d || '').match(/^(\d{4})\.(\d{2})\.(\d{2})/);
+      return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+    }
+    function dataReportBreve(d) {
+      const m = String(d || '').match(/^(\d{4})\.(\d{2})\.(\d{2})/);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+    }
+
+    // Fra due report dello stesso conto si tiene quello che copre di piu':
+    // piu' operazioni, a parita' quello che arriva piu' avanti nel tempo, a
+    // parita' ancora quello generato piu' di recente.
+    function copreDiPiu(nuovo, vecchio) {
+      if (nuovo.trades.length !== vecchio.trades.length) return nuovo.trades.length > vecchio.trades.length;
+      const fn = nuovo.maxDate ? nuovo.maxDate.getTime() : 0;
+      const fv = vecchio.maxDate ? vecchio.maxDate.getTime() : 0;
+      if (fn !== fv) return fn > fv;
+      return String(nuovo.dataReport || '') > String(vecchio.dataReport || '');
+    }
+
     // Firma di un report: stesso conto + stesso periodo + stessi trade = stesso file.
     function accountSignature(a) {
       const n = (a.trades || []).length;
@@ -863,7 +916,7 @@
             }
             
             // Account info
-            let accountName = '', accountNumber = '', company = '', currency = 'USD', serverName = '';
+            let accountName = '', accountNumber = '', company = '', currency = 'USD', serverName = '', dataReport = '';
             const valoreDopo = (row, etichetta) => {
               for (let c = 0; c < row.length; c++) {
                 if (String(row[c] || '').trim().toLowerCase() === etichetta) {
@@ -894,6 +947,10 @@
               // l'entita' giuridica resta vuota e il paese del quadro RW diventa
               // un ripiego.
               if (c0 === 'Company:' || c0 === 'Broker:') company = c3;
+              // Quando e' stato generato il report: serve a capire se i dati di un
+              // conto arrivano fino a dove servono, e a scegliere fra due report
+              // dello stesso conto.
+              if (c0 === 'Date:') dataReport = c3;
             }
             
             // Senza numero di conto non c'e' niente da attribuire: il file non e'
@@ -1209,7 +1266,7 @@
             balanceTimeline.sort((a, b) => a.date.getTime() - b.date.getTime());
             
             resolve({
-              accountName, accountNumber, company, displayCompany, serverName, currency, countryInfo,
+              accountName, accountNumber, company, displayCompany, serverName, currency, countryInfo, dataReport,
               trades, grossProfit, grossLoss, netProfit: grossProfit + grossLoss,
               totalCommission, totalSwap, totalProfitRaw,
               wins, losses, valoreIniziale, valoreFinale,
@@ -1444,6 +1501,8 @@
         accountName: acc.accountName, accountNumber: acc.accountNumber,
         company: acc.company, displayCompany: acc.displayCompany || acc.company,
         serverName: acc.serverName || '',
+        // Data di generazione del report: serve a dire se copre tutto l'anno.
+        dataReport: acc.dataReport || '',
         currency: acc.currency, countryInfo: acc.countryInfo,
         trades: 0, wins: 0, losses: 0, grossProfit: 0, grossLoss: 0, netProfit: 0,
         // Accumulatori EUR a cambi storici (popolati nel loop trades di consolidateData)
@@ -1515,6 +1574,7 @@
           
           // Nome broker completo, senza troncamento (il layout span:2 ha spazio sufficiente)
           const brokerLabel = a.displayCompany || a.company;
+          const dataRep = dataReportBreve(a.dataReport);
           
           accHTML += `<div class="account-row">
             <div class="account-stat"><div class="label">Account</div><div class="value">${a.accountNumber}</div></div>
@@ -1526,6 +1586,7 @@
             <div class="account-stat"><div class="label">RT 26%</div><div class="value loss">€${imp.toFixed(2)}</div></div>
             <div class="account-stat"><div class="label">Val.Ini/Fin</div><div class="value" style="font-size:11px;">${a.valoreInizialeEUR.toFixed(2)} → ${a.valoreFinaleEUR.toFixed(2)}</div></div>
             <div class="account-stat"><div class="label">Giorni</div><div class="value">${a.giorni}</div></div>
+            ${dataRep ? `<div class="account-stat"><div class="label">Report del</div><div class="value" style="font-size:11px;">${dataRep}</div></div>` : ''}
             <div class="account-stat"><div class="label">IVAFE</div><div class="value text-gold">€${a.ivafe.toFixed(2)}</div></div>
             ${depTag}${wdTag}${intInTag}${intOutTag}${promoTag}${bonusTag}
           </div>`;
@@ -1537,6 +1598,7 @@
             <div class="btn-group">
               <button class="btn btn-secondary" onclick="genRT(${year})">📄 Quadro RT</button>
               <button class="btn btn-secondary" onclick="genRW(${year})">📄 Quadro RW</button>
+              <button class="btn btn-primary" onclick="genAnno(${year})">📥 Fascicolo ${year}</button>
             </div>
           </div>
           ${accHTML}
@@ -1762,6 +1824,33 @@
       add('Quadratura del quadro RT', rt.length ? 'error' : 'ok',
           rt.length ? 'Corrispettivi meno costi non danno la plusvalenza dichiarata.'
                     : 'Per ogni anno RT21 − RT22 = RT23.', rt);
+
+      // --- 4ter. Aggiornamento dei report ---
+      // Un report generato prima della fine di un anno chiuso non puo' contenerlo
+      // tutto. E' successo davvero: export di aprile usati per un anno intero.
+      const vecchi = [];
+      Object.keys(yearlyData).sort().forEach(y => {
+        if (annoProvvisorio(y)) return;            // l'anno in corso e' per forza parziale
+        Object.values(yearlyData[y].accounts).forEach(a => {
+          const d = dataReportISO(a.dataReport);
+          if (!d) return;
+          if (d <= `${y}-12-31`) {
+            vecchi.push(`${y} · conto ${a.accountNumber} · report generato il ${dataReportBreve(a.dataReport)}, ` +
+                        `prima della fine dell'anno`);
+          }
+        });
+      });
+      const senzaData = accounts.filter(a => !a.dataReport).map(a => `conto ${a.accountNumber}: il report non riporta la data di generazione`);
+      if (vecchi.length) {
+        add('Aggiornamento dei report', 'error',
+            'Questi report sono stati generati prima della fine dell\'anno a cui si riferiscono: non possono contenere le operazioni fino al 31 dicembre, quindi plusvalenze e giacenze di quell\'anno sono incomplete. Riesportali da MT5 con "Tutta la storia" e ricaricali.', vecchi.concat(senzaData));
+      } else {
+        add('Aggiornamento dei report', senzaData.length ? 'warn' : 'ok',
+            senzaData.length
+              ? 'Per questi conti non si riesce a leggere la data di generazione, quindi non si può verificare che coprano tutto l\'anno.'
+              : 'Ogni report è stato generato dopo la fine dell\'anno a cui si riferisce: la copertura è completa.',
+            senzaData);
+      }
 
       // --- 7ter. Conti in paesi a fiscalita' privilegiata ---
       // Non e' un errore da correggere: e' una circostanza che cambia aliquota,
@@ -1999,7 +2088,7 @@
             <table><thead><tr><th>Account</th><th>Broker</th><th>Valuta</th><th>Profitti</th><th>Perdite</th><th>Netto</th><th>Imposta</th></tr></thead><tbody>${rows}</tbody></table>
           </div>
           <div class="info"><strong>📝 Istruzioni:</strong><ul style="margin-top:8px;margin-left:20px"><li>Compilare il <strong>Quadro RT</strong> del Modello Redditi PF</li><li>Plusvalenze da broker esteri: imposta sostitutiva 26%</li><li>Minusvalenze compensabili nei 4 anni successivi</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
-          <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+          <div class="footer"><p>${SUITE.label}</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RT_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
       </body></html>`;
@@ -2049,7 +2138,7 @@
           <div style="margin-bottom:32px"><h2 style="font-size:16px;color:#16a34a;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">📑 Dettaglio Conti Esteri</h2>${accHTML}</div>
           <div class="hl"><div class="label">TOTALE IVAFE ${year}</div><div class="value">€ ${d.totals.ivafe.toFixed(2)}</div></div>
           <div class="info"><strong>📝 Istruzioni Quadro RW:</strong><ul style="margin-top:8px;margin-left:20px"><li><strong>Codice investimento:</strong> 14 (Altri strumenti finanziari)</li><li><strong>IVAFE:</strong> 2 per mille sul valore proporzionato ai giorni di detenzione, elevata a <strong>4 per mille dal 2024</strong> per i prodotti finanziari detenuti negli Stati del DM 4/5/1999 (Legge di Bilancio 2024). L'aliquota applicata a ciascun conto è indicata sotto il relativo importo.</li><li><strong>Obbligo monitoraggio:</strong> indipendentemente dall'importo per conti su broker esteri</li><li><strong>Compilare:</strong> Un rigo per ogni conto/broker estero</li></ul>${fxMethodNote(year)}${notaAnnoInCorso(year)}${verificaNote()}${noteControparti()}</div>
-          <div class="footer"><p>Report generato da MT5 Fiscal Analyzer</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+          <div class="footer"><p>${SUITE.label}</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dl(){html2pdf().set({margin:10,filename:'Quadro_RW_${year}.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(document.getElementById('rc')).save()}<\/script>
       </body></html>`;
@@ -2179,6 +2268,7 @@
           <td style="text-align:right">${a.giorni}</td>
           <td style="text-align:right">${((a.aliquotaIvafe || 0.002) * 1000).toFixed(0)}‰</td>
           <td style="text-align:right">€ ${a.ivafe.toFixed(2)}</td>
+          <td style="text-align:right">${dataReportBreve(a.dataReport) || '—'}</td>
         </tr>`;
       }).join('');
 
@@ -2231,7 +2321,7 @@
           <table>
             <thead><tr>
               <th>Conto</th><th>Intermediario</th><th>Paese</th><th>Valuta</th>
-              <th>Valore finale</th><th>Giorni</th><th>Aliq.</th><th>IVAFE</th>
+              <th>Valore finale</th><th>Giorni</th><th>Aliq.</th><th>IVAFE</th><th>Report del</th>
             </tr></thead>
             <tbody>${conti}</tbody>
           </table>
@@ -2334,6 +2424,44 @@
         <div style="display:flex;flex-wrap:wrap;justify-content:space-between;">${imgs}</div></div>`;
     }
 
+    // Fascicolo di UN SOLO anno: copertina + Quadro RT + Quadro RW.
+    // Serve perche' il report MT5 contiene tutta la storia, ma al
+    // commercialista si consegna un anno per volta: gli anni gia' dichiarati
+    // restano fuori dal documento, senza doverli ricaricare.
+    function genAnno(year) {
+      year = String(year);
+      if (!yearlyData[year]) { showStatus('⚠️ Nessun dato per l\'anno ' + year, true); return; }
+
+      const sezioni = copertinaHtml([year]) + buildQuadriHtml([year]);
+      const filename = `Quadri_RT_RW_${year}.pdf`;
+      const t = yearlyData[year].totals;
+      const imp = t.netProfit > 0 ? t.netProfit * 0.26 : 0;
+      const nConti = Object.keys(yearlyData[year].accounts).length;
+      const avviso = annoProvvisorio(year)
+        ? `<span style="margin-left:16px;font-size:12px;color:#b45309;font-weight:600">⚠️ Anno non ancora chiuso: valori provvisori</span>`
+        : '';
+
+      const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Quadri RT + RW — Anno ${year}</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>
+        <style>${PDF_CSS}</style></head><body>
+        <div class="toolbar">
+          <button class="btn btn-p" onclick="dlAnno()">📥 Scarica il fascicolo ${year}</button>
+          <button class="btn btn-s" onclick="window.print()">🖨️ Stampa</button>
+          <span style="margin-left:16px;font-size:12px;color:#666">Anno ${year} — ${nConti} conti · RT € ${imp.toFixed(2)} · IVAFE € ${t.ivafe.toFixed(2)}</span>${avviso}
+        </div>
+        <div id="rc">
+          ${sezioni}
+          <div class="footer"><p>${SUITE.label} — Anno ${year}</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+        </div>
+        <script>function dlAnno(){html2pdf().set({margin:8,filename:'${filename}',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['avoid-all','css','legacy']}}).from(document.getElementById('rc')).save()}<\/script>
+      </body></html>`;
+
+      const w = window.open('', '_blank');
+      if (!w) { showStatus('⚠️ Popup bloccato dal browser. Abilita i popup per questo sito.', true); return; }
+      w.document.write(html); w.document.close();
+      showStatus(`✅ Fascicolo ${year} pronto: copertina + Quadro RT + Quadro RW del solo ${year}`);
+    }
+
     function exportAllPDF() {
       const years = Object.keys(yearlyData).sort();
       if (years.length === 0) { showStatus('⚠️ Nessun dato da esportare', true); return; }
@@ -2352,7 +2480,7 @@
         </div>
         <div id="rc">
           ${allSections}
-          <div class="footer"><p>Report generato da MT5 Fiscal Analyzer v3</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+          <div class="footer"><p>${SUITE.label}</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>
         <script>function dlAll(){html2pdf().set({margin:8,filename:'${filename}',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['avoid-all','css','legacy']}}).from(document.getElementById('rc')).save()}<\/script>
       </body></html>`;
@@ -2390,7 +2518,7 @@
         // Container nascosto con il contenuto da generare
         yearContainers += `<div id="${containerId}" style="${idx > 0 ? 'display:none;' : ''}">
           ${yearSections}
-          <div class="footer"><p>Report generato da MT5 Fiscal Analyzer v3 — Anno ${year}</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
+          <div class="footer"><p>${SUITE.label} — Anno ${year}</p><p>⚠️ Documento indicativo — Consultare un commercialista</p></div>
         </div>`;
       });
       
@@ -2479,6 +2607,10 @@
       showStatus('✅ CSV esportato');
     }
     
+    // Versione e data dell'ultimo aggiornamento, da fx.js (unico punto).
+    document.getElementById('appFooter').innerHTML =
+      SUITE.label + ' · i dati restano su questo dispositivo';
+
     function clearData() {
       const n = Object.keys(contropartiOk).length;
       const avviso = n ? `\n\nLe ${n} note sulle controparti verificate restano salvate.` : '';

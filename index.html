@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT5 Fiscal Suite</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
-<script src="fx.js?v=2026-11-03"></script>
+<script src="fx.js?v=2026-11-03b"></script>
 <style>
   :root {
     --bg: #0b0e14; --surface: #131720; --surface2: #1a1f2e;
@@ -120,13 +120,14 @@
   </div>
 
   <footer>
-    MT5 Fiscal Suite · <span id="year"></span> · funziona anche offline dopo la prima apertura
+    <span id="suiteLabel"></span><br>funziona anche offline dopo la prima apertura
   </footer>
 
 </div>
 
 <script>
-  document.getElementById('year').textContent = new Date().getFullYear();
+  // Versione e data dell'ultimo aggiornamento, da fx.js (unico punto).
+  document.getElementById('suiteLabel').textContent = SUITE.label;
 
   // Stato del motore cambi: quanto e' gia' in cache locale e a che punto e' oggi.
   (function () {

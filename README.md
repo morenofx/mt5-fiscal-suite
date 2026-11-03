@@ -48,6 +48,31 @@ viene scaricata da sola. L'euro non viene convertito. Se per una valuta non esis
 gli importi in euro di quei conti restano **non calcolati** e due controlli lo segnalano come
 errore: meglio un buco dichiarato che un numero convertito col cambio della valuta sbagliata.
 
+## Un solo report per conto
+
+Il report MT5 contiene **tutta la storia del conto**, quindi ne basta uno per conto: caricarne
+due dello stesso conto conterebbe due volte le stesse operazioni. L'analyzer non lo permette.
+
+- stesso conto, stesso periodo, stesse operazioni → il secondo file viene **scartato**;
+- stesso conto, report diversi → ne entra **uno solo**, quello che copre di più (più operazioni;
+  a parità, quello che arriva più avanti nel tempo; a parità ancora, quello generato più di recente).
+  L'altro viene scartato;
+- ogni scarto è **elencato per nome di file**, con il motivo: è l'unico modo per accorgersi di
+  avere in cartella due export dello stesso conto.
+
+Ogni conto mostra la data in cui il suo report è stato generato (riga `Date:` dell'export), sia a
+schermo sia nella tabella dei conti in copertina. Un controllo segnala i report generati **prima
+della fine di un anno chiuso**: non possono contenerlo tutto, e vanno riesportati. È il caso vero
+di export fatti ad aprile e usati per l'anno intero.
+
+## Un anno per volta
+
+Si dichiara un anno alla volta, ma il report caricato contiene tutti gli anni. Per questo ogni
+anno ha il suo pulsante **📥 Fascicolo &lt;anno&gt;**, che produce copertina + Quadro RT + Quadro RW
+del **solo** anno scelto (`Quadri_RT_RW_<anno>.pdf`): gli anni già dichiarati restano fuori dal
+documento senza dover ricaricare niente. `📅 PDF Per Anno (separati)` fa la stessa cosa per tutti
+gli anni in una finestra sola, `📄 PDF Unico` li mette tutti in un documento.
+
 ## Verifica dati
 
 Entrambe le app eseguono controlli automatici sui dati caricati e mostrano l'esito, che finisce
@@ -65,7 +90,7 @@ l'identità falliva su 7 conti su 9, includendo `Commission` e `Swap` chiude a z
 Gli altri controlli: continuità dei saldi fra anni, conti con giacenza ma senza report negli anni
 successivi, report che non partono da saldo zero, qualità dei cambi applicati, movimenti
 classificati solo dal segno, broker non riconosciuto, quadratura RT21 − RT22 = RT23, bonus esclusi,
-anni non ancora chiusi.
+anni non ancora chiusi, report generati prima della fine dell'anno che dichiarano.
 
 Nel calculator: righe duplicate (tabella incollata due volte), righe senza data o fuori anno,
 cambi mancanti, lordo non coerente col netto accreditato, righe inserite a mano, propri acquisti
@@ -95,6 +120,13 @@ broker, e i broker migrano i conti fra le proprie entità. Va riletto dal report
   l'art. 13, c. 4, DPR 633/72 per i corrispettivi in valuta estera (cambio del giorno di
   effettuazione o, in mancanza, del giorno antecedente più prossimo). L'importo da registrare è il
   **lordo** pagato dal cliente; la commissione MQL5 del 20% è un costo separato.
+
+## Versione e data dell'ultimo aggiornamento
+
+Versione e data stanno in **un solo posto**, in fondo a `fx.js` (`SUITE.version`, `SUITE.updated`):
+le tre pagine e tutti i PDF leggono da lì, così la data stampata su un documento non può divergere
+dal codice che l'ha prodotto. **Vanno aggiornate a ogni modifica di una qualsiasi pagina**, insieme
+al parametro `?v=` descritto qui sotto.
 
 ## Aggiornare il motore cambi
 
