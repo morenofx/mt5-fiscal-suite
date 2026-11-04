@@ -88,6 +88,14 @@ basta tenere aggiornati i file nella cartella.
 - Una pagina web non può aggiornarsi a finestra chiusa, e nessun browser lo consente: è una
   protezione, non un limite da aggirare. Il minimo è aprire la pagina.
 
+## Indice laterale
+
+La pagina dell'analyzer è lunga — conti, grafici, un blocco per anno — quindi ha un **indice fisso
+a sinistra** per saltare dove serve. Si rifà da solo a ogni cambio di contenuto, segna la sezione in
+cui ti trovi mentre scorri, e accanto a ogni anno mostra quanto costa quell'anno (imposta + IVAFE);
+accanto a "Verifica dati" mostra ✅, ⚠️ o ❌. Sotto i 1500px di larghezza diventa un pulsante in
+basso a sinistra, e il pannello si chiude cliccando fuori o con Esc.
+
 ## Un anno per volta
 
 Si dichiara un anno alla volta, ma il report caricato contiene tutti gli anni. Per questo ogni

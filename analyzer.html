@@ -6,7 +6,7 @@
   <title>MT5 Fiscal Analyzer v3 — Quadro RT & RW</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="fx.js?v=2026-11-04"></script>
+  <script src="fx.js?v=2026-11-04b"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -45,6 +45,57 @@
     }
     
     .container { max-width: 1080px; margin: 0 auto; }
+
+    /* ---- Indice laterale ----
+       La pagina e' lunga: conti, grafici, un blocco per anno. Questo e' il modo
+       per saltare dove serve senza scorrere tutto. Sta a sinistra, fuori dal
+       container, e sparisce quando la finestra e' troppo stretta per ospitarlo. */
+    #indice {
+      position: fixed; left: 16px; top: 50%; transform: translateY(-50%);
+      z-index: 50; width: 190px; max-height: 82vh; overflow-y: auto;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 10px 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      font-size: 12.5px; line-height: 1.35;
+    }
+    #indice .titolo {
+      font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--text-muted); padding: 2px 10px 8px;
+    }
+    #indice a {
+      display: block; padding: 6px 10px; border-radius: 7px;
+      color: var(--text-dim); text-decoration: none;
+      border-left: 2px solid transparent; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+      transition: background .15s ease, color .15s ease;
+    }
+    #indice a:hover { background: var(--surface2); color: var(--text); }
+    #indice a.attivo {
+      color: var(--accent); background: var(--accent-glow);
+      border-left-color: var(--accent); font-weight: 600;
+    }
+    #indice a.anno { padding-left: 22px; font-size: 12px; }
+    #indice .divisore { height: 1px; background: var(--border); margin: 6px 10px; }
+    #indice .pallino { float: right; font-size: 10px; opacity: .85; }
+    #indiceToggle { display: none; }
+
+    /* Sotto i 1500px il menu fisso coprirebbe il contenuto: diventa un bottone. */
+    @media (max-width: 1499px) {
+      #indice { display: none; }
+      #indiceToggle {
+        display: block; position: fixed; left: 14px; bottom: 18px; z-index: 51;
+        width: 44px; height: 44px; border-radius: 12px; cursor: pointer;
+        background: var(--surface); color: var(--text);
+        border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0,0,0,.4);
+        font-size: 18px; line-height: 1;
+      }
+      body.indice-aperto #indice { display: block; top: auto; bottom: 72px; transform: none; }
+    }
+    @media print { #indice, #indiceToggle { display: none !important; } }
+
+    /* Lo scroll si ferma sotto il bordo, non incollato. */
+    html { scroll-behavior: smooth; }
+    [id^="sez"], .year-card { scroll-margin-top: 18px; }
     
     /* Header */
     .header { text-align: center; margin-bottom: 40px; }
@@ -196,7 +247,7 @@
     <div id="statusMsg"></div>
     
     <!-- Dati del contribuente -->
-    <div class="card">
+    <div class="card" id="sezDati">
       <div class="card-title">🧾 Dati per il documento</div>
       <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
         Compaiono solo sui PDF che generi, in copertina. Restano su questo dispositivo: non vengono inviati da nessuna parte.
@@ -227,7 +278,7 @@
     </div>
 
     <!-- Drop Zone -->
-    <div class="card">
+    <div class="card" id="sezCarica">
       <div class="card-title">📂 Carica Report MT5</div>
       <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
         <div class="icon">📊</div>
@@ -259,7 +310,7 @@
     <div id="resultsSection" style="display:none;">
       
       <!-- Riepilogo -->
-      <div class="card" style="background:linear-gradient(135deg, rgba(59,130,246,0.08), rgba(99,102,241,0.08));">
+      <div class="card" id="sezRiepilogo" style="background:linear-gradient(135deg, rgba(59,130,246,0.08), rgba(99,102,241,0.08));">
         <div class="card-title">📊 Riepilogo Totale</div>
         <div class="stats-grid" id="totalStats"></div>
       </div>
@@ -268,7 +319,7 @@
       <div id="verificaSection" class="card"></div>
 
       <!-- Grafici -->
-      <div class="card">
+      <div class="card" id="sezGrafici">
         <div class="card-title">📈 Grafici</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
           <div><div style="font-size:12px;margin-bottom:8px;color:#94a3b8;letter-spacing:.5px;">PROFITTO NETTO PER ANNO (EUR)</div><div style="height:240px;position:relative;"><canvas id="chYear"></canvas></div></div>
@@ -282,7 +333,7 @@
       <div id="yearlyResults"></div>
       
       <!-- Azioni -->
-      <div class="card">
+      <div class="card" id="sezEsporta">
         <div class="card-title">📑 Esporta</div>
         <div class="btn-group">
           <button class="btn btn-primary" onclick="exportAllPDF()">📄 PDF Unico (tutti gli anni)</button>
@@ -296,6 +347,10 @@
     <div id="appFooter" style="margin:28px 0 8px;text-align:center;font-size:12px;color:var(--text-dim);"></div>
     
   </div>
+
+  <!-- Indice laterale: la pagina e' lunga, serve poter saltare -->
+  <nav id="indice" aria-label="Sezioni della pagina"></nav>
+  <button id="indiceToggle" onclick="document.body.classList.toggle('indice-aperto')" aria-label="Apri l'indice">☰</button>
 
   <script>
     // ==================== GLOBALS ====================
@@ -914,6 +969,7 @@
     // All'apertura: se il permesso c'e' ancora, i report si ricaricano da soli.
     (async () => {
       await renderCartella();
+      buildIndice();
       if (!cartellaDisponibile) return;
       const dir = await fsLeggi();
       if (!dir) return;
@@ -1799,7 +1855,7 @@
           </div>`;
         });
         
-        yc.innerHTML += `<div class="year-card">
+        yc.innerHTML += `<div class="year-card" id="anno-${year}">
           <div class="year-header">
             <div class="year-badge">${year}${annoProvvisorio(year) ? ' <span style="font-size:11px;font-weight:600;background:rgba(245,158,11,0.25);color:#fbbf24;padding:2px 8px;border-radius:6px;vertical-align:middle;">in corso</span>' : ''}</div>
             <div class="btn-group">
@@ -1816,7 +1872,107 @@
       });
       renderVerifica();
       renderCharts();
+      buildIndice();
     }
+
+    // ==================== INDICE LATERALE ====================
+    // La pagina cresce con gli anni e con i conti: l'indice si rifa' da solo
+    // ogni volta che cambia il contenuto, e segna dove sei mentre scorri.
+    function buildIndice() {
+      const nav = document.getElementById('indice');
+      if (!nav) return;
+      const visibile = el => el && el.offsetParent !== null;
+      const voci = [];
+      const aggiungi = (id, testo, extra) => {
+        const el = document.getElementById(id);
+        if (visibile(el)) voci.push(Object.assign({ id, testo }, extra || {}));
+      };
+
+      aggiungi('sezDati', '🧾 Dati documento');
+      aggiungi('cartellaCard', '🔗 Cartella');
+      aggiungi('sezCarica', '📂 Carica report');
+      aggiungi('currencySection', '💱 Cambi BCE');
+
+      if (visibile(document.getElementById('resultsSection'))) {
+        voci.push({ divisore: true });
+        aggiungi('sezRiepilogo', '📊 Riepilogo');
+        // Sulla verifica mettiamo quanti problemi ci sono: e' l'informazione
+        // che fa decidere se andarci o no.
+        if (visibile(document.getElementById('verificaSection'))) {
+          voci.push({ id: 'verificaSection', testo: '🔍 Verifica dati', pallino: _indiceEsito() });
+        }
+        aggiungi('sezGrafici', '📈 Grafici');
+
+        const anni = Object.keys(yearlyData).sort();
+        if (anni.length) {
+          voci.push({ divisore: true });
+          anni.forEach(y => {
+            const t = yearlyData[y].totals;
+            const imp = t.netProfit > 0 ? t.netProfit * 0.26 : 0;
+            voci.push({ id: 'anno-' + y, anno: true,
+                        testo: y + (annoProvvisorio(y) ? ' ⏳' : ''),
+                        pallino: '€' + (imp + t.ivafe).toFixed(0) });
+          });
+        }
+        voci.push({ divisore: true });
+        aggiungi('sezEsporta', '📑 Esporta');
+      }
+
+      nav.innerHTML = '<div class="titolo">Sezioni</div>' + voci.map(v => {
+        if (v.divisore) return '<div class="divisore"></div>';
+        const pal = v.pallino ? `<span class="pallino">${v.pallino}</span>` : '';
+        return `<a href="#${v.id}" data-sez="${v.id}" class="${v.anno ? 'anno' : ''}" ` +
+               `onclick="_indiceClic(this)">${v.testo}${pal}</a>`;
+      }).join('');
+      _indiceEvidenzia();
+    }
+
+    // Pallino di stato della verifica: rosso se c'e' un errore, giallo se solo avvisi.
+    function _indiceEsito() {
+      try {
+        const c = eseguiVerifiche();
+        if (c.some(x => x.esito === 'error')) return '❌';
+        if (c.some(x => x.esito === 'warn')) return '⚠️';
+        return '✅';
+      } catch (e) { return ''; }
+    }
+
+    // Il clic accende subito la voce: aspettare lo scroll la farebbe sembrare morta.
+    function _indiceClic(a) {
+      document.body.classList.remove('indice-aperto');
+      a.parentNode.querySelectorAll('a').forEach(x => x.classList.toggle('attivo', x === a));
+    }
+
+    // Segna la sezione in cui ti trovi: quella piu' in alto ancora visibile.
+    function _indiceEvidenzia() {
+      const nav = document.getElementById('indice');
+      if (!nav) return;
+      const link = Array.from(nav.querySelectorAll('a'));
+      if (!link.length) return;
+      let corrente = link[0];
+      link.forEach(a => {
+        const el = document.getElementById(a.dataset.sez);
+        if (el && el.getBoundingClientRect().top <= 120) corrente = a;
+      });
+      // L'ultima sezione non raggiunge mai la soglia in alto: sotto di lei non
+      // c'e' abbastanza pagina per scorrere. Quando si e' in fondo la si segna
+      // comunque, altrimenti cliccando "Esporta" resterebbe acceso l'anno sopra.
+      const inFondo = window.innerHeight + window.scrollY >= document.body.scrollHeight - 150;
+      if (inFondo) corrente = link[link.length - 1];
+      link.forEach(a => a.classList.toggle('attivo', a === corrente));
+    }
+    window.addEventListener('scroll', _indiceEvidenzia, { passive: true });
+
+    // A finestra stretta l'indice e' un pannello che si apre sopra il contenuto:
+    // un clic fuori lo chiude, altrimenti resta li' a coprire quello che leggi.
+    document.addEventListener('click', e => {
+      if (!document.body.classList.contains('indice-aperto')) return;
+      if (e.target.closest('#indice') || e.target.closest('#indiceToggle')) return;
+      document.body.classList.remove('indice-aperto');
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') document.body.classList.remove('indice-aperto');
+    });
 
     // ==================== GRAFICI ====================
     let _fxCharts = [];
