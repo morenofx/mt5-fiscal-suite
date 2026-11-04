@@ -6,7 +6,7 @@
   <title>MT5 Fiscal Analyzer v3 — Quadro RT & RW</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script src="fx.js?v=2026-11-04b"></script>
+  <script src="fx.js?v=2026-11-04c"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -46,56 +46,74 @@
     
     .container { max-width: 1080px; margin: 0 auto; }
 
-    /* ---- Indice laterale ----
-       La pagina e' lunga: conti, grafici, un blocco per anno. Questo e' il modo
-       per saltare dove serve senza scorrere tutto. Sta a sinistra, fuori dal
-       container, e sparisce quando la finestra e' troppo stretta per ospitarlo. */
-    #indice {
-      position: fixed; left: 16px; top: 50%; transform: translateY(-50%);
-      z-index: 50; width: 190px; max-height: 82vh; overflow-y: auto;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; padding: 10px 8px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.35);
-      font-size: 12.5px; line-height: 1.35;
+    /* ---- Barra laterale ----
+       La pagina non e' piu' un rotolo unico: ogni voce apre la sua sezione e
+       le altre restano chiuse. Si arriva ovunque con un clic. */
+    body { padding-left: 232px; }
+    #menu {
+      position: fixed; left: 0; top: 0; bottom: 0; width: 232px; z-index: 50;
+      background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; padding: 14px 10px;
+      overflow-y: auto;
     }
-    #indice .titolo {
-      font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
-      color: var(--text-muted); padding: 2px 10px 8px;
+    #menu .marchio {
+      display: flex; align-items: center; gap: 10px; text-decoration: none;
+      color: var(--text); padding: 6px 8px 14px; margin-bottom: 6px;
+      border-bottom: 1px solid var(--border);
     }
-    #indice a {
-      display: block; padding: 6px 10px; border-radius: 7px;
-      color: var(--text-dim); text-decoration: none;
-      border-left: 2px solid transparent; white-space: nowrap;
-      overflow: hidden; text-overflow: ellipsis;
+    #menu .marchio .logo { font-size: 22px; }
+    #menu .marchio strong { display: block; font-size: 13px; line-height: 1.2; }
+    #menu .marchio small { display: block; font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
+    #menu .marchio:hover small { color: var(--accent); }
+    #menuVoci { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; }
+    #menuVoci a {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 10px; border-radius: 8px; cursor: pointer;
+      color: var(--text-dim); text-decoration: none; font-size: 13px;
+      border-left: 2px solid transparent;
       transition: background .15s ease, color .15s ease;
     }
-    #indice a:hover { background: var(--surface2); color: var(--text); }
-    #indice a.attivo {
+    #menuVoci a:hover { background: var(--surface2); color: var(--text); }
+    #menuVoci a.attivo {
       color: var(--accent); background: var(--accent-glow);
       border-left-color: var(--accent); font-weight: 600;
     }
-    #indice a.anno { padding-left: 22px; font-size: 12px; }
-    #indice .divisore { height: 1px; background: var(--border); margin: 6px 10px; }
-    #indice .pallino { float: right; font-size: 10px; opacity: .85; }
-    #indiceToggle { display: none; }
-
-    /* Sotto i 1500px il menu fisso coprirebbe il contenuto: diventa un bottone. */
-    @media (max-width: 1499px) {
-      #indice { display: none; }
-      #indiceToggle {
-        display: block; position: fixed; left: 14px; bottom: 18px; z-index: 51;
-        width: 44px; height: 44px; border-radius: 12px; cursor: pointer;
-        background: var(--surface); color: var(--text);
-        border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0,0,0,.4);
-        font-size: 18px; line-height: 1;
-      }
-      body.indice-aperto #indice { display: block; top: auto; bottom: 72px; transform: none; }
+    #menuVoci a.anno { padding-left: 24px; font-size: 12.5px; }
+    #menuVoci a.spento { opacity: .4; pointer-events: none; }
+    #menuVoci .etichetta {
+      font-size: 9.5px; letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--text-muted); padding: 14px 10px 4px;
     }
-    @media print { #indice, #indiceToggle { display: none !important; } }
+    #menuVoci .coda { margin-left: auto; font-size: 10.5px; opacity: .9; font-weight: 400; }
+    #menuPie { margin-top: auto; padding: 12px 10px 4px; font-size: 10px; color: var(--text-muted); line-height: 1.45; border-top: 1px solid var(--border); }
+    #menuToggle { display: none; }
 
-    /* Lo scroll si ferma sotto il bordo, non incollato. */
-    html { scroll-behavior: smooth; }
-    [id^="sez"], .year-card { scroll-margin-top: 18px; }
+    /* Un pannello alla volta. */
+    .pagina { display: none; }
+    .pagina.aperta { display: block; animation: entra .18s ease; }
+    @keyframes entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .pagina-titolo {
+      font-size: 20px; color: #fff; font-weight: 700; margin: 4px 0 18px;
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    /* Finestra stretta: la barra diventa un pannello che si apre col bottone. */
+    @media (max-width: 900px) {
+      body { padding-left: 0; }
+      #menu { transform: translateX(-100%); transition: transform .2s ease; box-shadow: 0 0 40px rgba(0,0,0,.5); }
+      body.menu-aperto #menu { transform: none; }
+      #menuToggle {
+        display: block; position: fixed; left: 12px; bottom: 16px; z-index: 51;
+        width: 46px; height: 46px; border-radius: 12px; cursor: pointer;
+        background: var(--accent); color: #fff; border: none;
+        box-shadow: 0 6px 20px rgba(0,0,0,.45); font-size: 18px; line-height: 1;
+      }
+    }
+    @media print {
+      #menu, #menuToggle { display: none !important; }
+      body { padding-left: 0; }
+      .pagina { display: block !important; }
+    }
     
     /* Header */
     .header { text-align: center; margin-bottom: 40px; }
@@ -235,17 +253,24 @@
   </style>
 </head>
 <body>
+  <!-- Barra laterale: ogni voce apre la sua sezione, una alla volta -->
+  <aside id="menu" aria-label="Sezioni">
+    <a class="marchio" href="index.html">
+      <span class="logo">📊</span>
+      <span><strong>MT5 Fiscal Analyzer</strong><small>← Torna alla suite</small></span>
+    </a>
+    <nav id="menuVoci"></nav>
+    <div id="menuPie"></div>
+  </aside>
+  <button id="menuToggle" onclick="document.body.classList.toggle('menu-aperto')" aria-label="Apri il menu">☰</button>
+
   <div class="container">
     
-    <div class="header">
-      <div style="text-align:left;margin-bottom:10px;"><a href="index.html" style="color:var(--accent);text-decoration:none;font-size:13px;">← Torna alla suite</a></div>
-      <div class="header-badge">📊 Dichiarazione Fiscale</div>
-      <h1>MT5 Fiscal Analyzer <span style="font-size:14px;background:rgba(34,197,94,0.15);color:#22c55e;padding:4px 10px;border-radius:6px;vertical-align:middle;font-weight:600;">v3</span></h1>
-      <p class="subtitle">Quadro RT (Plusvalenze) & RW (Monitoraggio Conti Esteri) — Genera documenti per il commercialista</p>
-    </div>
-    
     <div id="statusMsg"></div>
-    
+
+    <!-- ============ DATI PER IL DOCUMENTO ============ -->
+    <section class="pagina" id="pg-dati">
+    <h2 class="pagina-titolo">🧾 Dati per il documento</h2>
     <!-- Dati del contribuente -->
     <div class="card" id="sezDati">
       <div class="card-title">🧾 Dati per il documento</div>
@@ -260,6 +285,11 @@
       </div>
     </div>
 
+    </section>
+
+    <!-- ============ REPORT ============ -->
+    <section class="pagina" id="pg-report">
+    <h2 class="pagina-titolo">📂 Report MT5</h2>
     <!-- Cartella collegata -->
     <div class="card" id="cartellaCard" style="display:none;">
       <div class="card-title">🔗 Cartella dei report</div>
@@ -294,6 +324,11 @@
       <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;" onchange="handleFiles(event)">
     </div>
     
+    </section>
+
+    <!-- ============ CAMBI ============ -->
+    <section class="pagina" id="pg-cambi">
+    <h2 class="pagina-titolo">💱 Cambi BCE</h2>
     <!-- Cambi EUR/USD -->
     <div id="currencySection" class="card" style="display:none;">
       <div class="card-title">💱 Cambi USD → EUR (fonte BCE)</div>
@@ -306,19 +341,29 @@
       <button class="btn btn-secondary" onclick="resetExchangeRates()" style="margin-top:8px;">🔄 Riscarica cambi BCE</button>
     </div>
     
+    </section>
+
     <!-- Risultati -->
     <div id="resultsSection" style="display:none;">
-      
-      <!-- Riepilogo -->
+
+      <!-- ============ RIEPILOGO ============ -->
+      <section class="pagina" id="pg-riepilogo">
+      <h2 class="pagina-titolo">📊 Riepilogo</h2>
       <div class="card" id="sezRiepilogo" style="background:linear-gradient(135deg, rgba(59,130,246,0.08), rgba(99,102,241,0.08));">
         <div class="card-title">📊 Riepilogo Totale</div>
         <div class="stats-grid" id="totalStats"></div>
       </div>
+      </section>
 
-      <!-- Verifica dati -->
+      <!-- ============ VERIFICA ============ -->
+      <section class="pagina" id="pg-verifica">
+      <h2 class="pagina-titolo">🔍 Verifica dati</h2>
       <div id="verificaSection" class="card"></div>
+      </section>
 
-      <!-- Grafici -->
+      <!-- ============ GRAFICI ============ -->
+      <section class="pagina" id="pg-grafici">
+      <h2 class="pagina-titolo">📈 Grafici</h2>
       <div class="card" id="sezGrafici">
         <div class="card-title">📈 Grafici</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
@@ -329,10 +374,17 @@
         </div>
       </div>
 
-      <!-- Per Anno -->
+      </section>
+
+      <!-- ============ ANNI ============ -->
+      <section class="pagina" id="pg-anni">
+      <h2 class="pagina-titolo" id="titoloAnni">📅 Anni</h2>
       <div id="yearlyResults"></div>
-      
-      <!-- Azioni -->
+      </section>
+
+      <!-- ============ ESPORTA ============ -->
+      <section class="pagina" id="pg-esporta">
+      <h2 class="pagina-titolo">📑 Esporta</h2>
       <div class="card" id="sezEsporta">
         <div class="card-title">📑 Esporta</div>
         <div class="btn-group">
@@ -342,15 +394,12 @@
           <button class="btn btn-danger" onclick="clearData()">🗑️ Cancella Dati</button>
         </div>
       </div>
+      </section>
     </div>
     
     <div id="appFooter" style="margin:28px 0 8px;text-align:center;font-size:12px;color:var(--text-dim);"></div>
     
   </div>
-
-  <!-- Indice laterale: la pagina e' lunga, serve poter saltare -->
-  <nav id="indice" aria-label="Sezioni della pagina"></nav>
-  <button id="indiceToggle" onclick="document.body.classList.toggle('indice-aperto')" aria-label="Apri l'indice">☰</button>
 
   <script>
     // ==================== GLOBALS ====================
@@ -812,6 +861,10 @@
         }
         document.getElementById('currencySection').style.display = 'block';
         consolidateData(); renderResults(); saveToStorage();
+        // Appena ci sono dei dati si passa ai risultati: restare sulla pagina
+        // di caricamento vorrebbe dire non far vedere niente di quello che e'
+        // appena stato letto.
+        if (pagina === 'pg-report') apriPagina('pg-riepilogo'); else buildMenu();
       } else {
         dz.innerHTML = '<div class="icon">📊</div><p>Trascina qui i report MT5 (.xlsx) o un\'intera cartella</p><p class="hint">💡 MT5 → Toolbox → Cronologia → Tasto destro → Report → Excel</p>';
       }
@@ -969,7 +1022,17 @@
     // All'apertura: se il permesso c'e' ancora, i report si ricaricano da soli.
     (async () => {
       await renderCartella();
-      buildIndice();
+      // Riapre la pagina dove si era rimasti; se non ci sono dati si parte
+      // da "Report", che e' l'unica cosa da fare.
+      try {
+        const salvata = (localStorage.getItem('mt5fa_pagina') || '').split('|');
+        if (salvata[0] && document.getElementById(salvata[0])) {
+          pagina = salvata[0];
+          if (salvata[1]) annoAperto = salvata[1];
+        }
+      } catch (e) {}
+      if (!accounts.length && pagina !== 'pg-dati') pagina = 'pg-report';
+      apriPagina(pagina, annoAperto);
       if (!cartellaDisponibile) return;
       const dir = await fsLeggi();
       if (!dir) return;
@@ -1871,107 +1934,109 @@
         </div>`;
       });
       renderVerifica();
-      renderCharts();
-      buildIndice();
+      if (pagina === 'pg-grafici') renderCharts();
+      mostraSoloAnno(annoAperto);
+      buildMenu();
     }
 
-    // ==================== INDICE LATERALE ====================
-    // La pagina cresce con gli anni e con i conti: l'indice si rifa' da solo
-    // ogni volta che cambia il contenuto, e segna dove sei mentre scorri.
-    function buildIndice() {
-      const nav = document.getElementById('indice');
+    // ==================== BARRA LATERALE ====================
+    // Una sezione alla volta: si clicca una voce e si apre quel pannello.
+    // Il menu si rifa' da solo a ogni cambio di contenuto, perche' le voci
+    // dipendono da cosa c'e' caricato (gli anni, per esempio).
+    let pagina = 'pg-report';     // dove si e' adesso
+    let annoAperto = null;        // quale anno mostrare nella pagina "Anni"
+
+    function apriPagina(id, anno) {
+      const sez = document.getElementById(id);
+      if (!sez) return;
+      pagina = id;
+      annoAperto = (id === 'pg-anni') ? (anno || annoAperto) : annoAperto;
+      document.querySelectorAll('.pagina').forEach(p => p.classList.toggle('aperta', p.id === id));
+      if (id === 'pg-anni') mostraSoloAnno(annoAperto);
+      // I grafici disegnati mentre il pannello era nascosto vengono fuori
+      // schiacciati: Chart.js misura un contenitore alto zero. Si rifanno qui.
+      if (id === 'pg-grafici') renderCharts();
+      document.body.classList.remove('menu-aperto');
+      window.scrollTo(0, 0);
+      try { localStorage.setItem('mt5fa_pagina', id + (annoAperto ? '|' + annoAperto : '')); } catch (e) {}
+      buildMenu();
+    }
+
+    function mostraSoloAnno(anno) {
+      const schede = document.querySelectorAll('#yearlyResults .year-card');
+      if (!schede.length) return;
+      const anni = Object.keys(yearlyData).sort();
+      if (!anno || anni.indexOf(String(anno)) === -1) anno = anni[anni.length - 1];
+      annoAperto = String(anno);
+      schede.forEach(c => { c.style.display = (c.id === 'anno-' + annoAperto) ? '' : 'none'; });
+      const t = document.getElementById('titoloAnni');
+      if (t) t.textContent = '📅 Anno ' + annoAperto + (annoProvvisorio(annoAperto) ? ' — in corso, valori provvisori' : '');
+    }
+
+    function buildMenu() {
+      const nav = document.getElementById('menuVoci');
       if (!nav) return;
-      const visibile = el => el && el.offsetParent !== null;
-      const voci = [];
-      const aggiungi = (id, testo, extra) => {
-        const el = document.getElementById(id);
-        if (visibile(el)) voci.push(Object.assign({ id, testo }, extra || {}));
+      const caricati = accounts.length > 0;
+      const anni = caricati ? Object.keys(yearlyData).sort() : [];
+      const voce = (id, testo, opt) => {
+        opt = opt || {};
+        const attiva = (pagina === id) && (!opt.anno || String(opt.anno) === String(annoAperto));
+        const coda = opt.coda ? `<span class="coda">${opt.coda}</span>` : '';
+        const click = opt.anno ? `apriPagina('${id}','${opt.anno}')` : `apriPagina('${id}')`;
+        return `<a onclick="${click}" class="${attiva ? 'attivo' : ''}${opt.anno ? ' anno' : ''}` +
+               `${opt.spenta ? ' spento' : ''}">${testo}${coda}</a>`;
       };
 
-      aggiungi('sezDati', '🧾 Dati documento');
-      aggiungi('cartellaCard', '🔗 Cartella');
-      aggiungi('sezCarica', '📂 Carica report');
-      aggiungi('currencySection', '💱 Cambi BCE');
+      let h = '';
+      h += voce('pg-report', '📂 Report MT5', { coda: caricati ? accounts.length + ' conti' : '' });
+      h += voce('pg-dati', '🧾 Dati documento');
+      h += voce('pg-cambi', '💱 Cambi BCE', { spenta: !caricati });
 
-      if (visibile(document.getElementById('resultsSection'))) {
-        voci.push({ divisore: true });
-        aggiungi('sezRiepilogo', '📊 Riepilogo');
-        // Sulla verifica mettiamo quanti problemi ci sono: e' l'informazione
-        // che fa decidere se andarci o no.
-        if (visibile(document.getElementById('verificaSection'))) {
-          voci.push({ id: 'verificaSection', testo: '🔍 Verifica dati', pallino: _indiceEsito() });
-        }
-        aggiungi('sezGrafici', '📈 Grafici');
-
-        const anni = Object.keys(yearlyData).sort();
+      if (caricati) {
+        h += '<div class="etichetta">Risultati</div>';
+        h += voce('pg-riepilogo', '📊 Riepilogo');
+        h += voce('pg-verifica', '🔍 Verifica dati', { coda: _esitoVerifica() });
+        h += voce('pg-grafici', '📈 Grafici');
         if (anni.length) {
-          voci.push({ divisore: true });
+          h += '<div class="etichetta">Anni</div>';
           anni.forEach(y => {
             const t = yearlyData[y].totals;
             const imp = t.netProfit > 0 ? t.netProfit * 0.26 : 0;
-            voci.push({ id: 'anno-' + y, anno: true,
-                        testo: y + (annoProvvisorio(y) ? ' ⏳' : ''),
-                        pallino: '€' + (imp + t.ivafe).toFixed(0) });
+            h += voce('pg-anni', y + (annoProvvisorio(y) ? ' ⏳' : ''),
+                      { anno: y, coda: '€' + (imp + t.ivafe).toFixed(0) });
           });
         }
-        voci.push({ divisore: true });
-        aggiungi('sezEsporta', '📑 Esporta');
+        h += '<div class="etichetta">Documenti</div>';
+        h += voce('pg-esporta', '📑 Esporta');
       }
+      nav.innerHTML = h;
 
-      nav.innerHTML = '<div class="titolo">Sezioni</div>' + voci.map(v => {
-        if (v.divisore) return '<div class="divisore"></div>';
-        const pal = v.pallino ? `<span class="pallino">${v.pallino}</span>` : '';
-        return `<a href="#${v.id}" data-sez="${v.id}" class="${v.anno ? 'anno' : ''}" ` +
-               `onclick="_indiceClic(this)">${v.testo}${pal}</a>`;
-      }).join('');
-      _indiceEvidenzia();
+      const pie = document.getElementById('menuPie');
+      if (pie) {
+        pie.innerHTML = (typeof SUITE !== 'undefined' ? SUITE.label : '') +
+          '<br>i dati restano su questo dispositivo';
+      }
     }
 
-    // Pallino di stato della verifica: rosso se c'e' un errore, giallo se solo avvisi.
-    function _indiceEsito() {
+    // Esito della verifica, mostrato accanto alla voce: fa decidere se andarci.
+    function _esitoVerifica() {
       try {
         const c = eseguiVerifiche();
-        if (c.some(x => x.esito === 'error')) return '❌';
+        const err = c.filter(x => x.esito === 'error').length;
+        if (err) return '❌ ' + err;
         if (c.some(x => x.esito === 'warn')) return '⚠️';
         return '✅';
       } catch (e) { return ''; }
     }
 
-    // Il clic accende subito la voce: aspettare lo scroll la farebbe sembrare morta.
-    function _indiceClic(a) {
-      document.body.classList.remove('indice-aperto');
-      a.parentNode.querySelectorAll('a').forEach(x => x.classList.toggle('attivo', x === a));
-    }
-
-    // Segna la sezione in cui ti trovi: quella piu' in alto ancora visibile.
-    function _indiceEvidenzia() {
-      const nav = document.getElementById('indice');
-      if (!nav) return;
-      const link = Array.from(nav.querySelectorAll('a'));
-      if (!link.length) return;
-      let corrente = link[0];
-      link.forEach(a => {
-        const el = document.getElementById(a.dataset.sez);
-        if (el && el.getBoundingClientRect().top <= 120) corrente = a;
-      });
-      // L'ultima sezione non raggiunge mai la soglia in alto: sotto di lei non
-      // c'e' abbastanza pagina per scorrere. Quando si e' in fondo la si segna
-      // comunque, altrimenti cliccando "Esporta" resterebbe acceso l'anno sopra.
-      const inFondo = window.innerHeight + window.scrollY >= document.body.scrollHeight - 150;
-      if (inFondo) corrente = link[link.length - 1];
-      link.forEach(a => a.classList.toggle('attivo', a === corrente));
-    }
-    window.addEventListener('scroll', _indiceEvidenzia, { passive: true });
-
-    // A finestra stretta l'indice e' un pannello che si apre sopra il contenuto:
-    // un clic fuori lo chiude, altrimenti resta li' a coprire quello che leggi.
+    // A finestra stretta il menu copre il contenuto: un clic fuori lo chiude.
     document.addEventListener('click', e => {
-      if (!document.body.classList.contains('indice-aperto')) return;
-      if (e.target.closest('#indice') || e.target.closest('#indiceToggle')) return;
-      document.body.classList.remove('indice-aperto');
+      if (!document.body.classList.contains('menu-aperto')) return;
+      if (e.target.closest('#menu') || e.target.closest('#menuToggle')) return;
+      document.body.classList.remove('menu-aperto');
     });
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') document.body.classList.remove('indice-aperto');
+      if (e.key === 'Escape') document.body.classList.remove('menu-aperto');
     });
 
     // ==================== GRAFICI ====================
@@ -3001,7 +3066,8 @@
       const n = Object.keys(contropartiOk).length;
       const avviso = n ? `\n\nLe ${n} note sulle controparti verificate restano salvate.` : '';
       if (!confirm('Cancellare tutti i report MT5 caricati?' + avviso)) return;
-      accounts = []; yearlyData = {}; clearStorage();
+      accounts = []; yearlyData = {}; nomeFile = {}; societaViste = {}; annoAperto = null; clearStorage();
+      apriPagina('pg-report');
       document.getElementById('resultsSection').style.display = 'none';
       document.getElementById('currencySection').style.display = 'none';
       document.getElementById('dropZone').innerHTML = '<div class="icon">📊</div><p>Trascina qui i report MT5 (.xlsx) o un\'intera cartella</p><p class="hint">💡 MT5 → Toolbox → Cronologia → Tasto destro → Report → Excel</p>';

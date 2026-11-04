@@ -88,13 +88,23 @@ basta tenere aggiornati i file nella cartella.
 - Una pagina web non può aggiornarsi a finestra chiusa, e nessun browser lo consente: è una
   protezione, non un limite da aggirare. Il minimo è aprire la pagina.
 
-## Indice laterale
+## Barra laterale (v4.0)
 
-La pagina dell'analyzer è lunga — conti, grafici, un blocco per anno — quindi ha un **indice fisso
-a sinistra** per saltare dove serve. Si rifà da solo a ogni cambio di contenuto, segna la sezione in
-cui ti trovi mentre scorri, e accanto a ogni anno mostra quanto costa quell'anno (imposta + IVAFE);
-accanto a "Verifica dati" mostra ✅, ⚠️ o ❌. Sotto i 1500px di larghezza diventa un pulsante in
-basso a sinistra, e il pannello si chiude cliccando fuori o con Esc.
+L'analyzer non è più una pagina unica da scorrere: ha una **barra laterale a sinistra** e ogni voce
+apre la sua sezione, una alla volta — Report, Dati documento, Cambi, Riepilogo, Verifica, Grafici,
+un pannello per ogni anno, Esporta.
+
+- la barra si rifà da sola a ogni cambio di contenuto: le voci dei risultati compaiono solo quando
+  ci sono dei report caricati, e c'è una riga per ogni anno trovato;
+- accanto a ogni anno quanto costa (imposta + IVAFE), accanto a "Verifica dati" il suo esito
+  (✅, ⚠️ o ❌ con quanti errori): sono le informazioni che fanno decidere dove andare;
+- caricati i report si passa da sé al Riepilogo, perché restare sulla pagina di caricamento non
+  mostrerebbe nulla di ciò che è stato appena letto;
+- l'ultima sezione aperta viene ricordata e riaperta alla visita successiva;
+- i grafici vengono ridisegnati quando il loro pannello si apre: disegnati mentre è nascosto
+  uscirebbero schiacciati, perché Chart.js misura un contenitore alto zero;
+- sotto i 900px la barra diventa un pulsante in basso a sinistra e si chiude cliccando fuori o
+  con Esc. In stampa non compare e tutte le sezioni tornano visibili.
 
 ## Un anno per volta
 
