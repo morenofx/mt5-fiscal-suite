@@ -126,6 +126,11 @@ per i prodotti finanziari detenuti negli Stati dell'elenco del **DM 4 maggio 199
 elenco determina, sul quadro RW, il raddoppio delle sanzioni in caso di omissione e termini di
 accertamento più lunghi.
 
+Il **codice individuazione bene** della colonna 3 del rigo RW non è dichiarato da questo documento:
+le fonti divergono fra 20 (dossier titoli / conto trading presso intermediario estero) e 14 (categoria
+residuale), e non è un dato ricavabile dai report MT5. Va preso dalle istruzioni ufficiali del modello
+dell'anno d'imposta. Il documento riporta tutto il resto del rigo: Stato, valore, giorni, aliquota.
+
 L'elenco usato è quello del testo in vigore pubblicato dall'Agenzia delle Entrate: vi figurano
 `Isole Cayman (The Cayman Islands)` e `Seicelle (Republic of Seychelles)`, entrambe senza la nota
 di eliminazione che accompagna i paesi rimossi (Cipro e Malta col DM 27/7/2010, la Svizzera dal
