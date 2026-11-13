@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Etsy e Printify — MT5 Fiscal Suite</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👕</text></svg>">
-<script src="fx.js?v=2026-11-13b"></script>
+<script src="fx.js?v=2026-11-13c"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root {
@@ -526,6 +526,14 @@ function disegna() {
     h += '<button data-v="anno" class="' + (vista === 'anno' ? 'on' : '') + '"><span>📅 Riepilogo</span></button>';
     h += '<button data-v="verifica" class="' + (vista === 'verifica' ? 'on' : '') + '"><span>🔎 Verifica dati</span>' +
          '<span class="pill ' + (nErr ? 'err' : nAv ? 'todo' : 'ok') + '">' + (nErr + nAv ? nErr + nAv : '✓') + '</span></button>';
+    // Tre elenchi separati, come le tre cose diverse che si scrivono su Fiscozen.
+    const tutteV = [].concat(...C.lista.map(m => m.vendite)), tutteE = [].concat(...C.lista.map(m => m.fattEtsy)), tutteP = [].concat(...C.lista.map(m => m.prSi));
+    const nV = tutteV.filter(v => !fatti['v:' + v.ordine]).length, nE = tutteE.filter(f => !fatti['e:' + f.numero]).length, nP = tutteP.filter(x => !fatti['p:' + x.numero]).length;
+    const pil = n => n ? '<span class="pill todo">' + n + '</span>' : '<span class="pill ok">✓</span>';
+    h += '<div class="anno">Da scrivere su Fiscozen</div>' +
+         '<button data-v="t-vendite" class="' + (vista === 't-vendite' ? 'on' : '') + '"><span>🧾 Corrispettivi Etsy</span>' + pil(nV) + '</button>' +
+         '<button data-v="t-etsy" class="' + (vista === 't-etsy' ? 'on' : '') + '"><span>📄 Spesa Etsy del mese</span>' + pil(nE) + '</button>' +
+         '<button data-v="t-printify" class="' + (vista === 't-printify' ? 'on' : '') + '"><span>👕 Spese Printify</span>' + pil(nP) + '</button>';
     let anno = '';
     C.lista.forEach(m => {
       if (m.mese.slice(0, 4) !== anno) { anno = m.mese.slice(0, 4); h += '<div class="anno">' + anno + '</div>'; }
@@ -538,10 +546,11 @@ function disegna() {
   nav.querySelectorAll('button').forEach(b => b.onclick = () => { vista = b.dataset.v; disegna(); window.scrollTo(0, 0); });
 
   const main = document.getElementById('main');
-  if (vista !== 'carica' && vista !== 'anno' && vista !== 'verifica' && !C.lista.some(m => m.mese === vista)) vista = C.lista.length ? 'anno' : 'carica';
+  if (vista !== 'carica' && vista !== 'anno' && vista !== 'verifica' && vista.slice(0, 2) !== 't-' && !C.lista.some(m => m.mese === vista)) vista = C.lista.length ? 'anno' : 'carica';
   if (vista === 'carica') main.innerHTML = vistaCarica(C);
   else if (vista === 'anno') main.innerHTML = vistaAnno(C);
   else if (vista === 'verifica') main.innerHTML = vistaVerifica(ck);
+  else if (vista.slice(0, 2) === 't-') main.innerHTML = vistaTipo(C, vista);
   else main.innerHTML = vistaMese(C.lista.find(m => m.mese === vista));
   aggancia();
 }
@@ -654,6 +663,54 @@ function vistaMese(m) {
     h += '</table></div>';
   }
   h += '</div>';
+  return h;
+}
+
+// ---------- I tre elenchi per Fiscozen ----------
+// Ogni riga porta gia' quello che Fiscozen chiede: data, importo, descrizione.
+// Prima cio' che resta da scrivere, in ordine di data; sotto, il gia' fatto.
+function dataLunga(iso) { const p = iso.split('-'); return p2(+p[2]) + '/' + p[1] + '/' + p[0]; }
+function vistaTipo(C, tipo) {
+  const cronol = (a, b) => a.data.localeCompare(b.data);
+  let righe, titolo, spiega, extra = '';
+  if (tipo === 't-vendite') {
+    titolo = 'Corrispettivi Etsy'; spiega = 'Una riga per ogni vendita: su Fiscozen è un corrispettivo, con la data dell\'ordine e il totale pagato dal cliente.';
+    righe = [].concat(...C.lista.map(m => m.vendite)).sort(cronol).map(v => ({
+      k: 'v:' + v.ordine, data: v.data, importo: v.incassato,
+      descr: 'Vendita Etsy ordine ' + v.ordine + ' – ' + (v.titoli[0] || 't-shirt') + (v.pezzi > 1 ? ' (' + v.pezzi + ' magliette)' : ''),
+      nota: (v.tasse ? 'di cui ' + eur(v.tasse) + ' di tasse trattenute da Etsy' : '') + (v.rimborsato ? (v.tasse ? ' · ' : '') + 'RIMBORSATI ' + eur(v.rimborsato) : ''), av: !!v.rimborsato }));
+  } else if (tipo === 't-etsy') {
+    titolo = 'Spesa Etsy del mese'; spiega = 'Una riga per mese: la fattura di Etsy Ireland con le commissioni. Esce a mese finito, quindi si scrive nel mese dopo.';
+    righe = [].concat(...C.lista.map(m => m.fattEtsy)).sort(cronol).map(f => ({
+      k: 'e:' + f.numero, data: f.data, importo: f.totale,
+      descr: 'Commissioni Etsy di ' + nomeMese(f.mese) + ' – fattura n. ' + f.numero + ' (Etsy Ireland UC)',
+      nota: f.piva ? 'con partita IVA ' + f.piva : 'senza la tua partita IVA sulla fattura', av: !f.piva }));
+    const oggi = new Date(), meseOra = oggi.getFullYear() + '-' + p2(oggi.getMonth() + 1);
+    const manca = C.lista.filter(m => m.mese < meseOra && !m.fattEtsy.length && m.vendite.length).map(m => nomeMese(m.mese));
+    if (manca.length) extra = '<p class="hint" style="margin-top:12px"><span class="tag av">manca il PDF</span> Fattura Etsy non ancora in cartella per: ' + manca.join(', ') + '.</p>';
+  } else {
+    titolo = 'Spese Printify'; spiega = 'Una riga per ogni maglietta prodotta la cui fattura porta la tua partita IVA (società europea di Printify). Le fatture senza partita IVA non sono in questo elenco.';
+    righe = [].concat(...C.lista.map(m => m.prSi)).sort(cronol).map(x => ({
+      k: 'p:' + x.numero, data: x.data, importo: x.totale,
+      descr: 'Acquisto t-shirt stampata su richiesta per rivendita – Printify, fattura n. ' + x.numero + (x.articoli[0] ? ' (' + x.articoli[0] + ')' : ''),
+      nota: (x.emittente || '') + ' · spedita in ' + x.shipTo, av: false }));
+    const fuori = [].concat(...C.lista.map(m => m.prNo)), scar = [].concat(...C.lista.map(m => m.daScaricare));
+    const dubbie = fuori.filter(ueSenzaPiva);
+    extra = '<p class="hint" style="margin-top:12px">Fuori da questo elenco: <strong>' + (fuori.length - dubbie.length) + '</strong> fatture senza partita IVA (' + eur(r2(fuori.filter(x => !ueSenzaPiva(x)).reduce((s, x) => s + x.totale, 0))) + '), non da scrivere.' +
+            (dubbie.length ? ' <span class="tag av">' + dubbie.length + ' da chiarire</span> società europea ma senza partita IVA: ' + dubbie.map(x => 'n. ' + x.numero + ' ' + eur(x.totale)).join(', ') + '.' : '') + '</p>' +
+            (scar.length ? '<p class="hint" style="margin-top:8px"><span class="tag av">' + scar.length + ' PDF da scaricare</span> Magliette già stampate di cui manca la fattura in cartella: finché non c\'è non so se porta la partita IVA. L\'elenco è nei singoli mesi e in Verifica dati.</p>' : '');
+  }
+  const daFare = righe.filter(r => !fatti[r.k]), fatte = righe.filter(r => fatti[r.k]);
+  const tot = a => r2(a.reduce((s, r) => s + r.importo, 0));
+  const tab = (a, cls) => '<div class="tw"><table><tr><th></th><th>Data</th><th class="n">Importo</th><th>Descrizione da scrivere</th><th>Nota</th></tr>' +
+    a.map(r => '<tr class="' + cls + '"><td>' + spunta(r.k) + '</td><td style="white-space:nowrap">' + dataLunga(r.data) + '</td><td class="n"><strong>' + eur(r.importo) + '</strong></td><td>' + esc(r.descr) + '</td><td>' + (r.av ? '<span class="tag av">' + esc(r.nota) + '</span>' : '<span class="hint">' + esc(r.nota) + '</span>') + '</td></tr>').join('') +
+    '</table></div>';
+  let h = '<div class="nums"><div class="num"><div class="l">Ancora da scrivere</div><div class="v">' + daFare.length + '</div><div class="s">' + eur(tot(daFare)) + '</div></div>' +
+          '<div class="num"><div class="l">Già scritte</div><div class="v">' + fatte.length + '</div><div class="s">' + eur(tot(fatte)) + '</div></div>' +
+          '<div class="num"><div class="l">Totale ' + titolo + '</div><div class="v">' + eur(tot(righe)) + '</div><div class="s">' + righe.length + ' righe</div></div></div>';
+  h += '<div class="card"><h2>' + titolo + ': da scrivere su Fiscozen</h2><p class="hint" style="margin-bottom:10px">' + spiega + ' Spunta la riga quando l\'hai scritta.</p>' +
+       (daFare.length ? tab(daFare, '') : '<p class="hint">✅ Niente da scrivere: è tutto registrato.</p>') + extra + '</div>';
+  if (fatte.length) h += '<div class="card"><h2>Già scritte</h2><p class="hint" style="margin-bottom:10px">Togli la spunta se ne hai segnata una per sbaglio.</p>' + tab(fatte, 'fatto') + '</div>';
   return h;
 }
 
