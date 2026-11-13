@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Etsy e Printify — MT5 Fiscal Suite</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👕</text></svg>">
-<script src="fx.js?v=2026-11-13d"></script>
+<script src="fx.js?v=2026-11-13e"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root {
@@ -485,20 +485,25 @@ async function fileDallaCartella(dir, dentro) {
   }
   return out;
 }
-let statoCartella = '';
+let statoCartella = '', nomeCartella = '';
 async function collega() {
   try {
     const dir = await window.showDirectoryPicker({ id: 'etsy-printify', mode: 'read' });
     await fsOp('readwrite', s => s.put(dir, FS_KEY));
+    nomeCartella = dir.name;
     await rileggi(false);
   } catch (e) { if (!e || e.name !== 'AbortError') { statoCartella = '⚠️ ' + (e.message || e); disegna(); } }
 }
-async function scollega() { await fsOp('readwrite', s => s.delete(FS_KEY)); statoCartella = ''; disegna(); }
+async function scollega() {
+  await fsOp('readwrite', s => s.delete(FS_KEY)); nomeCartella = '';
+  statoCartella = 'Cartella scollegata. I dati già letti restano a schermo finché non ne colleghi un\'altra.'; disegna();
+}
 // La cartella comanda: a ogni rilettura i dati si rifanno da zero con quello
 // che c'e' dentro adesso. Le spunte "registrato" restano.
 async function rileggi(silenzioso) {
   const dir = await fsLeggi();
   if (!dir) return;
+  nomeCartella = dir.name;
   let perm = await dir.queryPermission({ mode: 'read' });
   if (perm !== 'granted') {
     if (silenzioso) { statoCartella = 'Cartella «' + dir.name + '» collegata: premi Rileggi per aggiornare.'; disegna(); return; }
@@ -558,9 +563,11 @@ function disegna() {
 function vistaCarica(C) {
   const nCsv = Object.keys(D.csv).length, nFe = Object.keys(D.fattEtsy).length, nPr = Object.keys(D.printify).length;
   return '<div class="card"><h2>Da dove leggo</h2>' +
-    '<p class="hint">Collega una volta la cartella <strong>PARTITA IVA</strong> di iCloud: a ogni apertura rileggo da solo tutto quello che c\'è dentro, sottocartelle comprese. Riconosco tre tipi di file e ignoro il resto.</p>' +
+    '<p class="hint">Collega una volta la cartella <strong>PARTITA IVA</strong> di iCloud: a ogni apertura rileggo da solo tutto quello che c\'è dentro, sottocartelle comprese. È lì che il Mac mini scrive ogni mattina vendite e stampe: questa pagina è pubblica e non ha un suo archivio, quindi i tuoi dati li può leggere solo dal tuo disco.</p>' +
+    '<p class="hint" style="margin-top:8px">' + (nomeCartella ? 'Cartella collegata adesso: <strong>«' + esc(nomeCartella) + '»</strong>.' + (nomeCartella !== 'PARTITA IVA' ? ' <span class="tag av">non è PARTITA IVA</span> Premi <em>Cambia cartella</em> e scegli quella che contiene sia le fatture Etsy sia quelle Printify.' : '') : 'Nessuna cartella collegata.') + '</p>' +
     '<div class="row">' +
-      (cartellaOk ? '<button class="btn" id="bCollega">🔗 Collega la cartella</button><button class="btn ghost" id="bRileggi">🔄 Rileggi</button><button class="btn ghost" id="bScollega">Scollega</button>'
+      (cartellaOk ? (nomeCartella ? '<button class="btn" id="bRileggi">🔄 Rileggi «' + esc(nomeCartella) + '»</button><button class="btn ghost" id="bCollega">Cambia cartella</button><button class="btn ghost" id="bScollega">Scollega</button>'
+                                  : '<button class="btn" id="bCollega">🔗 Collega la cartella</button>')
                   : '<span class="hint">Questo browser non sa collegarsi a una cartella (serve Chrome o Edge). Puoi scegliere i file a mano.</span>') +
       '<button class="btn ghost" id="bFile">Scegli i file</button>' +
     '</div>' +
