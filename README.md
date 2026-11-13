@@ -7,6 +7,7 @@ uniti in un'unica pagina iniziale. Tutto gira nel browser: nessun server, nessun
 |---|---|
 | **MT5 Fiscal Analyzer** (`analyzer.html`) | Legge i report `.xlsx` di MetaTrader 5 e prepara Quadro RT (plusvalenze, imposta 26%) e Quadro RW (giacenze conti esteri, IVAFE) per il commercialista |
 | **MQL5 Proventi Calculator** (`calculator.html`) | Interpreta la tabella Payments di MQL5 e calcola l'imponibile in euro da registrare nei corrispettivi (partita IVA), vendita per vendita |
+| **Etsy e Printify** (`etsy.html`) | Legge estratti CSV e fatture PDF di Etsy e le fatture d'ordine Printify; mese per mese elenca i corrispettivi (ogni vendita), la spesa Etsy (fattura mensile) e le spese Printify (solo fatture con la partita IVA del cliente), con la spunta di ciò che è già registrato |
 
 ## Il motore cambi (`fx.js`)
 
@@ -177,7 +178,7 @@ al parametro `?v=` descritto qui sotto.
 ## Aggiornare il motore cambi
 
 Le tre pagine caricano `fx.js?v=DATA`. Se modifichi `fx.js`, cambia quel parametro in
-`index.html`, `analyzer.html` e `calculator.html`: senza, il browser può continuare a usare
+`index.html`, `analyzer.html`, `calculator.html` ed `etsy.html`: senza, il browser può continuare a usare
 la versione vecchia rimasta in cache.
 
 ## Uso

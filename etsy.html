@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Etsy e Printify — MT5 Fiscal Suite</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👕</text></svg>">
+<script src="fx.js?v=2026-11-13a"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0e14; --surface: #131720; --surface2: #1a1f2e;
+    --border: #252d3d; --text: #e2e8f0; --dim: #7c8db5; --muted: #4a5878;
+    --accent: #3b82f6; --green: #10b981; --gold: #f59e0b; --red: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: -apple-system, system-ui, 'Segoe UI', sans-serif; line-height: 1.5;
+    padding: calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px) !important;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  .top { max-width: 1180px; margin: 0 auto 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .top h1 { font-size: 22px; color: #fff; }
+  .top .back { font-size: 13px; }
+  .top .sub { color: var(--dim); font-size: 13px; flex-basis: 100%; }
+  .layout { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 250px 1fr; gap: 18px; align-items: start; }
+  nav { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 8px; position: sticky; top: 12px; }
+  nav .anno { color: var(--muted); font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; padding: 10px 10px 4px; }
+  nav button {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%;
+    background: none; border: 0; color: var(--text); font: inherit; font-size: 14px;
+    padding: 9px 10px; border-radius: 8px; cursor: pointer; text-align: left;
+  }
+  nav button:hover { background: var(--surface2); }
+  nav button.on { background: rgba(59,130,246,.18); color: #fff; }
+  .pill { font-size: 11px; font-weight: 700; border-radius: 100px; padding: 2px 8px; white-space: nowrap; }
+  .pill.todo { background: rgba(245,158,11,.18); color: var(--gold); }
+  .pill.ok { background: rgba(16,185,129,.16); color: var(--green); }
+  .pill.err { background: rgba(239,68,68,.18); color: var(--red); }
+  .pill.none { background: var(--surface2); color: var(--muted); }
+  main { min-width: 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 17px; color: #fff; margin-bottom: 4px; }
+  .card h3 { font-size: 14px; color: #fff; margin: 0 0 8px; }
+  .hint { color: var(--dim); font-size: 13px; }
+  .btn { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn.ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  #drop { border: 2px dashed var(--border); border-radius: 10px; padding: 18px; text-align: center; color: var(--dim); font-size: 13px; margin-top: 12px; }
+  #drop.over { border-color: var(--accent); color: var(--text); }
+  .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .num { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .num .l { color: var(--dim); font-size: 12px; }
+  .num .v { font-size: 22px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+  .num .s { color: var(--muted); font-size: 12px; }
+  .tw { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.fatto td { color: var(--muted); }
+  tr.no td { color: var(--muted); }
+  td input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--green); cursor: pointer; }
+  .tag { font-size: 11px; border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+  .tag.si { background: rgba(16,185,129,.16); color: var(--green); }
+  .tag.nn { background: var(--surface2); color: var(--dim); }
+  .tag.av { background: rgba(245,158,11,.18); color: var(--gold); }
+  .chk { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .chk:last-child { border-bottom: 0; }
+  .chk .i { flex: 0 0 22px; }
+  .chk ul { margin: 4px 0 0 18px; color: var(--dim); }
+  footer { max-width: 1180px; margin: 24px auto 0; text-align: center; font-size: 12px; color: var(--muted); }
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { position: static; display: flex; overflow-x: auto; gap: 4px; scrollbar-width: none; }
+    nav::-webkit-scrollbar { display: none; }
+    nav .anno { display: none; }
+    nav button { width: auto; white-space: nowrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <a class="back" href="index.html">← Cruscotto</a>
+  <h1>👕 Etsy e Printify</h1>
+  <p class="sub">Mese per mese: ogni maglietta venduta su Etsy (corrispettivo), la fattura mensile di Etsy (spesa) e ogni maglietta stampata da Printify (spesa solo se la fattura porta la tua partita IVA).</p>
+</div>
+
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main"></main>
+</div>
+
+<footer><span id="suiteLabel"></span><br>i file vengono letti nel browser: niente esce da questo dispositivo</footer>
+
+<input type="file" id="fileIn" multiple accept=".csv,.pdf" style="display:none">
+
+<script>
+'use strict';
+document.getElementById('suiteLabel').textContent = SUITE.label;
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ==================== STATO ====================
+// csv:      { 'AAAA-MM': { righe: [...], file } }   una sola copia per mese
+// fattEtsy: { numero: {...} }                        fattura mensile Etsy (PDF)
+// printify: { numero: {...} }                        fattura per ordine Printify (PDF)
+// fatti:    { chiave: 'AAAA-MM-GG' }                 cosa e' gia' stato registrato
+const K_DATI = 'etsyfs_dati_v1', K_FATTI = 'etsyfs_fatti_v1';
+let D = { csv: {}, fattEtsy: {}, printify: {} };
+let fatti = {};
+let scarti = [];          // file non letti o doppioni, con il motivo
+let vista = 'carica';
+try { D = Object.assign(D, JSON.parse(localStorage.getItem(K_DATI) || '{}')); } catch (e) {}
+try { fatti = JSON.parse(localStorage.getItem(K_FATTI) || '{}'); } catch (e) {}
+function salva() {
+  try { localStorage.setItem(K_DATI, JSON.stringify(D)); localStorage.setItem(K_FATTI, JSON.stringify(fatti)); } catch (e) {}
+}
+
+const MESI = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+const MESI_EN = { january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12,
+                  jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12 };
+const p2 = n => String(n).padStart(2, '0');
+const eur = n => (n == null || isNaN(n)) ? '—' : n.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const nomeMese = m => { const p = m.split('-'); return MESI[+p[1] - 1] + ' ' + p[0]; };
+const dataIt = iso => { const p = iso.split('-'); return +p[2] + ' ' + MESI[+p[1] - 1].slice(0, 3); };
+const r2 = n => Math.round(n * 100) / 100;
+
+// "September 30, 2026" / "Nov 11, 2026" / "31 October, 2026"  ->  2026-09-30
+function dataEn(s) {
+  let m = /([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})/.exec(s) ;
+  let g, me, a;
+  if (m && MESI_EN[m[1].toLowerCase()]) { me = MESI_EN[m[1].toLowerCase()]; g = +m[2]; a = +m[3]; }
+  else {
+    m = /(\d{1,2})\s+([A-Za-z]+)\.?,?\s+(\d{4})/.exec(s);
+    if (!m || !MESI_EN[m[2].toLowerCase()]) return null;
+    g = +m[1]; me = MESI_EN[m[2].toLowerCase()]; a = +m[3];
+  }
+  return a + '-' + p2(me) + '-' + p2(g);
+}
+// "€31.25", "-€0.18", "€1,234.56", "--"  ->  numero (o 0 per "--")
+function soldi(s) {
+  s = String(s || '').trim();
+  if (!s || s === '--') return 0;
+  const neg = /^[-−(]/.test(s) || /-/.test(s.replace(/[^-\d]/g, '').slice(0, 1));
+  const n = parseFloat(s.replace(/[^\d.,]/g, '').replace(/,(?=\d{3}\b)/g, '').replace(',', '.'));
+  return isNaN(n) ? NaN : (neg ? -n : n);
+}
+
+// ==================== LETTURA CSV ETSY ====================
+function parseCsv(t) {
+  t = t.replace(/^﻿/, '');
+  const out = []; let riga = [], c = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (q) {
+      if (ch === '"') { if (t[i + 1] === '"') { c += '"'; i++; } else q = false; }
+      else c += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { riga.push(c); c = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && t[i + 1] === '\n') i++;
+      riga.push(c); c = ''; if (riga.length > 1 || riga[0] !== '') out.push(riga); riga = [];
+    } else c += ch;
+  }
+  if (c !== '' || riga.length) { riga.push(c); out.push(riga); }
+  return out;
+}
+
+function leggiCsvEtsy(testo, nome) {
+  const r = parseCsv(testo);
+  if (!r.length) return 'file vuoto';
+  const h = r[0].map(x => x.trim());
+  const ix = n => h.indexOf(n);
+  const iD = ix('Date'), iT = ix('Type'), iTi = ix('Title'), iI = ix('Info'), iC = ix('Currency'),
+        iA = ix('Amount'), iF = ix('Fees & Taxes'), iN = ix('Net');
+  if (iD < 0 || iT < 0 || iTi < 0 || iA < 0 || iF < 0) {
+    return 'non e\' un estratto mensile Etsy (mancano le colonne Date, Type, Title, Amount, Fees & Taxes)';
+  }
+  const perMese = {};
+  for (let k = 1; k < r.length; k++) {
+    const x = r[k], d = dataEn(x[iD] || '');
+    if (!d) return 'data non letta alla riga ' + (k + 1) + ': "' + (x[iD] || '') + '"';
+    const riga = { d, tipo: (x[iT] || '').trim(), titolo: x[iTi] || '', info: x[iI] || '', val: (x[iC] || '').trim(),
+                   imp: soldi(x[iA]), fee: soldi(x[iF]), netto: iN >= 0 ? soldi(x[iN]) : 0 };
+    (perMese[d.slice(0, 7)] = perMese[d.slice(0, 7)] || []).push(riga);
+  }
+  let presi = 0;
+  Object.keys(perMese).forEach(m => {
+    const vecchio = D.csv[m];
+    if (vecchio && vecchio.righe.length > perMese[m].length) {
+      scarti.push({ file: nome, motivo: 'estratto di ' + nomeMese(m) + ' piu\' corto di quello gia\' letto (' + vecchio.file + ')' });
+      return;
+    }
+    if (vecchio && vecchio.file !== nome) scarti.push({ file: vecchio.file, motivo: 'sostituito da ' + nome + ' per ' + nomeMese(m) });
+    D.csv[m] = { righe: perMese[m], file: nome }; presi++;
+  });
+  return presi ? null : 'niente di nuovo';
+}
+
+// ==================== LETTURA PDF ====================
+// Il testo viene ricomposto riga per riga dalle coordinate: senza, colonne e
+// righe di una fattura escono mescolate.
+async function testoPdf(file) {
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const righe = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const per = {};
+    tc.items.forEach(it => {
+      if (!it.str || !it.str.trim()) return;
+      const y = Math.round(it.transform[5] / 3);
+      (per[y] = per[y] || []).push({ x: it.transform[4], s: it.str });
+    });
+    Object.keys(per).map(Number).sort((a, b) => b - a).forEach(y => {
+      righe.push(per[y].sort((a, b) => a.x - b.x).map(o => o.s).join(' ').replace(/\s+/g, ' ').trim());
+    });
+  }
+  return righe;
+}
+
+function leggiPrintify(righe, nome) {
+  const t = righe.join('\n');
+  const num = (/Invoice #\s*([\d.]+)/.exec(t) || [])[1];
+  const data = dataEn((/Issue date:\s*([A-Za-z]+ \d{1,2}, \d{4})/.exec(t) || [])[1] || '');
+  const tot = /Invoice total:?\s*([A-Z]{3})\s*([\d.,]+)/.exec(t);
+  if (!num || !data || !tot) return 'fattura Printify non leggibile (numero, data o totale mancanti)';
+  const emittente = /Printify Development SIA/.test(t) ? 'Printify Development SIA (Lettonia)'
+                  : /Printify Inc\b/.test(t) ? 'Printify Inc (USA)' : null;
+  // La partita IVA del cliente compare solo sulle fatture dell'entita' europea.
+  const piva = (/\bVAT:\s*(IT\s?\d{11})/.exec(t) || [])[1] || null;
+  const articoli = []; let pezzi = 0;
+  righe.forEach((l, i) => {
+    const m = /^(.*?)\s+(\d{1,3})\s+(?:EUR|USD|GBP)\s+[\d.,]+/.exec(l);
+    if (!m) return;
+    if (/^(SKU\b|Package insert|Shipping surcharge|Production|Shipping|Sales tax|VAT|Invoice total)/i.test(m[1])) return;
+    const dopo = (righe[i + 1] || '') + ' ' + (righe[i + 2] || '');
+    if (!/SKU\s*\d+/.test(dopo) && !/SKU\s*\d+/.test(l)) return;
+    articoli.push(m[1].replace(/\.\.\.$/, '').trim()); pezzi += +m[2];
+  });
+  const rec = {
+    numero: num, data, ordine: (/External Order ID:\s*(\d+)/.exec(t) || [])[1] || null,
+    shipTo: (/Ship to:\s*([A-Z]{2})\b/.exec(t) || [])[1] || '', emittente, piva,
+    valuta: tot[1], totale: soldi(tot[2]), articoli, pezzi, file: nome
+  };
+  if (D.printify[num]) { scarti.push({ file: nome, motivo: 'doppione della fattura Printify ' + num + ' (' + D.printify[num].file + ')' }); return null; }
+  D.printify[num] = rec; return null;
+}
+
+function leggiFatturaEtsy(righe, nome) {
+  const t = righe.join('\n');
+  const num = (/Invoice:\s*(\d+)/.exec(t) || [])[1];
+  const per = /Invoice Period:\s*(\d{1,2} [A-Za-z]+,? \d{4})\s*-\s*(\d{1,2} [A-Za-z]+,? \d{4})/.exec(t);
+  const tutti = [...t.matchAll(/\bTotal\s*€\s*([\d.,]+)/g)];
+  if (!num || !per || !tutti.length) return 'fattura Etsy non leggibile (numero, periodo o totale mancanti)';
+  const fine = dataEn(per[2]);
+  const rec = {
+    numero: num, mese: fine.slice(0, 7), data: fine, totale: soldi(tutti[tutti.length - 1][1]),
+    emittente: /Etsy Ireland/.test(t) ? 'Etsy Ireland UC (Irlanda)' : null,
+    piva: (/VAT ID:\s*(IT\s?\d{11})/.exec(t) || [])[1] || null, file: nome
+  };
+  if (D.fattEtsy[num]) { scarti.push({ file: nome, motivo: 'doppione della fattura Etsy ' + num + ' (' + D.fattEtsy[num].file + ')' }); return null; }
+  D.fattEtsy[num] = rec; return null;
+}
+
+async function leggiFile(files) {
+  let letti = 0;
+  for (const f of files) {
+    const nome = f.name;
+    if (nome.startsWith('.')) continue;
+    try {
+      if (f.size === 0) { scarti.push({ file: nome, motivo: 'file vuoto (segnaposto iCloud non scaricato?)' }); continue; }
+      let err;
+      if (/\.csv$/i.test(nome)) err = leggiCsvEtsy(await f.text(), nome);
+      else if (/\.pdf$/i.test(nome)) {
+        if (!window.pdfjsLib) { err = 'lettore PDF non caricato (serve la connessione la prima volta)'; }
+        else {
+          const righe = await testoPdf(f), t = righe.join('\n');
+          if (/ORDER INVOICE RECEIPT/i.test(t) && /Printify/.test(t)) err = leggiPrintify(righe, nome);
+          else if (/Etsy Ireland/.test(t) && /Invoice Period/.test(t)) err = leggiFatturaEtsy(righe, nome);
+          else continue;       // un altro PDF nella cartella: non e' affar nostro
+        }
+      } else continue;
+      if (err) scarti.push({ file: nome, motivo: err }); else letti++;
+    } catch (e) {
+      scarti.push({ file: nome, motivo: 'errore di lettura: ' + (e.message || e) });
+    }
+  }
+  salva();
+  return letti;
+}
+
+// ==================== CONTI ====================
+function conti() {
+  const vendite = {}, mesi = {}, ignoti = {}, valute = {};
+  const M = m => (mesi[m] = mesi[m] || { mese: m, vendite: [], rimborsi: [], feeCsv: 0, haCsv: false, fattEtsy: [], printify: [] });
+  Object.keys(D.csv).forEach(m => {
+    const mm = M(m); mm.haCsv = true;
+    D.csv[m].righe.forEach(x => {
+      if (x.val && x.val !== 'EUR') valute[x.val] = 1;
+      const ord = (/#(\d{6,})/.exec(x.tipo === 'Sale' || x.tipo === 'Refund' ? x.titolo + ' ' + x.info : x.info) || [])[1];
+      const V = o => (vendite[o] = vendite[o] || { ordine: o, data: null, incassato: 0, tasse: 0, comm: 0, titoli: [], haSale: false });
+      if (x.tipo === 'Sale') {
+        const v = V(ord || 'senza-numero-' + x.d); v.haSale = true; v.data = x.d; v.incassato = r2(v.incassato + x.imp);
+      } else if (x.tipo === 'Fee') {
+        mm.feeCsv = r2(mm.feeCsv - x.fee);
+        if (ord) {
+          const v = V(ord); v.comm = r2(v.comm - x.fee);
+          const t = /^Transaction fee:\s*(.+)$/.exec(x.titolo);
+          if (t && !/^Shipping/i.test(t[1])) v.titoli.push(t[1].replace(/\.\.\.$/, '').trim());
+        }
+      } else if (x.tipo === 'Tax') {
+        if (ord) { const v = V(ord); v.tasse = r2(v.tasse - x.fee); }
+      } else if (x.tipo === 'Refund') {
+        mm.rimborsi.push({ ordine: ord || '', data: x.d, importo: r2(Math.abs(x.imp || x.fee || x.netto)), titolo: x.titolo });
+      } else if (x.tipo === 'Deposit') {
+        // bonifico sul conto: non e' ne' una vendita ne' una spesa
+      } else ignoti[x.tipo || '(vuoto)'] = (ignoti[x.tipo || '(vuoto)'] || 0) + 1;
+    });
+  });
+  const stampe = {};
+  Object.values(D.printify).forEach(p => { if (p.ordine) (stampe[p.ordine] = stampe[p.ordine] || []).push(p); M(p.data.slice(0, 7)).printify.push(p); });
+  Object.values(vendite).forEach(v => {
+    if (!v.haSale) return;      // commissioni di un ordine pagato in un altro mese
+    v.stampe = stampe[v.ordine] || [];
+    v.costoStampa = r2(v.stampe.reduce((s, p) => s + p.totale, 0));
+    v.pezzi = v.titoli.length || 1;
+    M(v.data.slice(0, 7)).vendite.push(v);
+  });
+  Object.values(D.fattEtsy).forEach(f => M(f.mese).fattEtsy.push(f));
+  const lista = Object.values(mesi).sort((a, b) => b.mese.localeCompare(a.mese));
+  lista.forEach(m => {
+    m.vendite.sort((a, b) => a.data.localeCompare(b.data));
+    m.printify.sort((a, b) => a.data.localeCompare(b.data));
+    m.corrispettivi = r2(m.vendite.reduce((s, v) => s + v.incassato, 0));
+    m.tasse = r2(m.vendite.reduce((s, v) => s + v.tasse, 0));
+    m.rimborsato = r2(m.rimborsi.reduce((s, v) => s + v.importo, 0));
+    m.pezzi = m.vendite.reduce((s, v) => s + v.pezzi, 0);
+    m.speseEtsy = r2(m.fattEtsy.reduce((s, f) => s + f.totale, 0));
+    m.prSi = m.printify.filter(daDichiarare);
+    m.prNo = m.printify.filter(p => !daDichiarare(p));
+    m.spesePrintify = r2(m.prSi.reduce((s, p) => s + p.totale, 0));
+    m.printifyFuori = r2(m.prNo.reduce((s, p) => s + p.totale, 0));
+    m.stampate = m.printify.reduce((s, p) => s + (p.pezzi || 1), 0);
+    m.voci = m.vendite.map(v => 'v:' + v.ordine).concat(m.fattEtsy.map(f => 'e:' + f.numero), m.prSi.map(p => 'p:' + p.numero));
+    m.daFare = m.voci.filter(k => !fatti[k]).length;
+  });
+  return { lista, vendite, stampe, ignoti, valute: Object.keys(valute) };
+}
+
+// La regola: Printify entra nelle spese solo se la fattura porta la partita IVA
+// del cliente. Lo decide il documento, non il paese di spedizione.
+function daDichiarare(p) { return !!p.piva; }
+// Caso di confine visto sui file veri: fattura dell'entita' lettone ma senza la
+// partita IVA del cliente. Non la decide il codice: resta fuori ed e' segnalata.
+function ueSenzaPiva(p) { return !p.piva && /SIA/.test(p.emittente || ''); }
+
+function controlli(C) {
+  const out = [], oggi = new Date(), meseOra = oggi.getFullYear() + '-' + p2(oggi.getMonth() + 1);
+  const add = (st, titolo, righe) => out.push({ st, titolo, righe: righe || [] });
+
+  const senzaStampa = []; C.lista.forEach(m => m.vendite.forEach(v => { if (!v.stampe.length) senzaStampa.push(dataIt(v.data) + ' ' + v.data.slice(0, 4) + ' — ordine ' + v.ordine + ' (' + (v.titoli[0] || 'titolo non letto') + ')'); }));
+  add(senzaStampa.length ? 'av' : 'ok', senzaStampa.length ? 'Vendite Etsy senza la fattura Printify della stampa: ' + senzaStampa.length : 'Ogni vendita Etsy ha la sua fattura Printify', senzaStampa);
+
+  const senzaVendita = [], mesiSenzaCsv = {};
+  Object.values(D.printify).forEach(p => {
+    if (p.ordine && !(C.vendite[p.ordine] && C.vendite[p.ordine].haSale)) {
+      // Se di quel mese manca l'estratto, la vendita non puo' vedersi: lo dice gia'
+      // il controllo sui mesi senza CSV, qui sarebbe solo rumore.
+      if (!D.csv[p.data.slice(0, 7)]) mesiSenzaCsv[p.data.slice(0, 7)] = 1;
+      else senzaVendita.push(dataIt(p.data) + ' ' + p.data.slice(0, 4) + ' — fattura ' + p.numero + ', ordine Etsy ' + p.ordine);
+    }
+  });
+  add(senzaVendita.length ? 'av' : 'ok', senzaVendita.length ? 'Magliette stampate di cui non vedo la vendita su Etsy: ' + senzaVendita.length : 'Ogni stampa Printify ha la sua vendita Etsy', senzaVendita);
+
+  const mancaCsv = [], mancaFatt = [], diff = [];
+  C.lista.forEach(m => {
+    // L'estratto del mese in corso Etsy lo pubblica dal giorno 1 del mese dopo.
+    if (!m.haCsv && m.mese < meseOra && (m.fattEtsy.length || mesiSenzaCsv[m.mese])) mancaCsv.push(nomeMese(m.mese) + ' — scaricare etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv');
+    if (m.haCsv && !m.fattEtsy.length && m.mese < meseOra) mancaFatt.push(nomeMese(m.mese));
+    if (m.haCsv && m.fattEtsy.length && Math.abs(m.feeCsv - m.speseEtsy) > 0.05) diff.push(nomeMese(m.mese) + ' — fattura ' + eur(m.speseEtsy) + ', commissioni nell\'estratto ' + eur(m.feeCsv));
+  });
+  add(mancaCsv.length ? 'err' : 'ok', mancaCsv.length ? 'Mesi senza l\'estratto CSV di Etsy (le vendite di quei mesi non si vedono): ' + mancaCsv.length : 'Nessun mese con fattura ma senza estratto CSV', mancaCsv);
+  add(mancaFatt.length ? 'av' : 'ok', mancaFatt.length ? 'Mesi chiusi senza la fattura mensile di Etsy: ' + mancaFatt.length : 'Ogni mese chiuso ha la fattura mensile di Etsy', mancaFatt);
+  add(diff.length ? 'av' : 'ok', diff.length ? 'Fattura Etsy diversa dalle commissioni dell\'estratto: ' + diff.length + ' (comanda la fattura)' : 'La fattura Etsy coincide con le commissioni dell\'estratto', diff);
+
+  const strani = Object.values(D.printify).filter(p => !p.emittente || p.valuta !== 'EUR').map(p => 'fattura ' + p.numero + (p.emittente ? '' : ' — societa\' emittente non riconosciuta') + (p.valuta !== 'EUR' ? ' — importo in ' + p.valuta + ', non convertito' : ''));
+  const ig = Object.keys(C.ignoti).map(k => 'tipo di riga "' + k + '" nell\'estratto Etsy: ' + C.ignoti[k] + ' righe non contate');
+  const val = C.valute.map(v => 'estratto Etsy in ' + v + ': gli importi non sono in euro');
+  const tutto = strani.concat(ig, val);
+  add(tutto.length ? 'err' : 'ok', tutto.length ? 'Cose che non so leggere: ' + tutto.length : 'Nessuna riga o fattura di tipo sconosciuto', tutto);
+
+  const chiar = Object.values(D.printify).filter(ueSenzaPiva).map(p => dataIt(p.data) + ' ' + p.data.slice(0, 4) + ' — fattura ' + p.numero + ', ' + eur(p.totale) + ', spedita in ' + p.shipTo);
+  if (chiar.length) add('av', 'Fatture Printify dell\'entita\' europea ma senza la tua partita IVA: ' + chiar.length + ' (lasciate fuori dalle spese, chiedere al commercialista)', chiar);
+
+  const rimb = []; C.lista.forEach(m => m.rimborsi.forEach(r => rimb.push(dataIt(r.data) + ' ' + r.data.slice(0, 4) + ' — ' + eur(r.importo) + ' ordine ' + r.ordine)));
+  if (rimb.length) add('av', 'Rimborsi a clienti: ' + rimb.length + ' (da stornare a mano, chiedere al commercialista come)', rimb);
+  if (scarti.length) add('av', 'File scartati o non letti in questa lettura: ' + scarti.length, scarti.map(s => s.file + ' — ' + s.motivo));
+  return out;
+}
+
+// ==================== CARTELLA COLLEGATA ====================
+const FS_DB = 'etsyfs_fs', FS_STORE = 'handles', FS_KEY = 'cartella';
+const cartellaOk = typeof window.showDirectoryPicker === 'function';
+function fsDb() {
+  return new Promise((ok, no) => {
+    const r = indexedDB.open(FS_DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(FS_STORE);
+    r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+  });
+}
+async function fsOp(modo, fn) {
+  const db = await fsDb();
+  return new Promise((ok, no) => {
+    const tx = db.transaction(FS_STORE, modo), req = fn(tx.objectStore(FS_STORE));
+    tx.oncomplete = () => ok(req.result); tx.onerror = () => no(tx.error);
+  });
+}
+const fsLeggi = () => fsOp('readonly', s => s.get(FS_KEY)).catch(() => null);
+async function fileDallaCartella(dir, dentro) {
+  const out = [];
+  for await (const [nome, h] of dir.entries()) {
+    if (nome.startsWith('_') || nome.startsWith('.')) continue;
+    if (h.kind === 'directory') out.push(...await fileDallaCartella(h, dentro + nome + '/'));
+    else if (/\.(csv|pdf)$/i.test(nome)) {
+      const f = await h.getFile();
+      out.push(new File([f], dentro + nome, { type: f.type, lastModified: f.lastModified }));
+    }
+  }
+  return out;
+}
+let statoCartella = '';
+async function collega() {
+  try {
+    const dir = await window.showDirectoryPicker({ id: 'etsy-printify', mode: 'read' });
+    await fsOp('readwrite', s => s.put(dir, FS_KEY));
+    await rileggi(false);
+  } catch (e) { if (!e || e.name !== 'AbortError') { statoCartella = '⚠️ ' + (e.message || e); disegna(); } }
+}
+async function scollega() { await fsOp('readwrite', s => s.delete(FS_KEY)); statoCartella = ''; disegna(); }
+// La cartella comanda: a ogni rilettura i dati si rifanno da zero con quello
+// che c'e' dentro adesso. Le spunte "registrato" restano.
+async function rileggi(silenzioso) {
+  const dir = await fsLeggi();
+  if (!dir) return;
+  let perm = await dir.queryPermission({ mode: 'read' });
+  if (perm !== 'granted') {
+    if (silenzioso) { statoCartella = 'Cartella «' + dir.name + '» collegata: premi Rileggi per aggiornare.'; disegna(); return; }
+    perm = await dir.requestPermission({ mode: 'read' });
+    if (perm !== 'granted') { statoCartella = '⚠️ Permesso negato sulla cartella.'; disegna(); return; }
+  }
+  statoCartella = '⏳ Leggo la cartella «' + dir.name + '»…'; disegna();
+  let files;
+  try { files = await fileDallaCartella(dir, ''); }
+  catch (e) { statoCartella = '⚠️ Non riesco a leggere la cartella: ' + (e.message || e); disegna(); return; }
+  D = { csv: {}, fattEtsy: {}, printify: {} }; scarti = [];
+  const n = await leggiFile(files);
+  statoCartella = '✅ Cartella «' + dir.name + '»: ' + n + ' documenti letti, ' + new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) + '.';
+  if (vista === 'carica' && n) vista = 'anno';
+  disegna();
+}
+
+// ==================== SCHERMO ====================
+function disegna() {
+  const C = conti(), ck = controlli(C);
+  const nErr = ck.filter(c => c.st === 'err').length, nAv = ck.filter(c => c.st === 'av').length;
+  const nav = document.getElementById('nav');
+  let h = '<button data-v="carica" class="' + (vista === 'carica' ? 'on' : '') + '"><span>📂 Documenti</span></button>';
+  if (C.lista.length) {
+    h += '<button data-v="anno" class="' + (vista === 'anno' ? 'on' : '') + '"><span>📅 Riepilogo</span></button>';
+    h += '<button data-v="verifica" class="' + (vista === 'verifica' ? 'on' : '') + '"><span>🔎 Verifica dati</span>' +
+         '<span class="pill ' + (nErr ? 'err' : nAv ? 'todo' : 'ok') + '">' + (nErr + nAv ? nErr + nAv : '✓') + '</span></button>';
+    let anno = '';
+    C.lista.forEach(m => {
+      if (m.mese.slice(0, 4) !== anno) { anno = m.mese.slice(0, 4); h += '<div class="anno">' + anno + '</div>'; }
+      const pill = !m.voci.length ? '<span class="pill none">—</span>'
+                 : m.daFare ? '<span class="pill todo">' + m.daFare + ' da fare</span>' : '<span class="pill ok">✓ fatto</span>';
+      h += '<button data-v="' + m.mese + '" class="' + (vista === m.mese ? 'on' : '') + '"><span>' + MESI[+m.mese.slice(5) - 1] + '</span>' + pill + '</button>';
+    });
+  }
+  nav.innerHTML = h;
+  nav.querySelectorAll('button').forEach(b => b.onclick = () => { vista = b.dataset.v; disegna(); window.scrollTo(0, 0); });
+
+  const main = document.getElementById('main');
+  if (vista !== 'carica' && vista !== 'anno' && vista !== 'verifica' && !C.lista.some(m => m.mese === vista)) vista = C.lista.length ? 'anno' : 'carica';
+  if (vista === 'carica') main.innerHTML = vistaCarica(C);
+  else if (vista === 'anno') main.innerHTML = vistaAnno(C);
+  else if (vista === 'verifica') main.innerHTML = vistaVerifica(ck);
+  else main.innerHTML = vistaMese(C.lista.find(m => m.mese === vista));
+  aggancia();
+}
+
+function vistaCarica(C) {
+  const nCsv = Object.keys(D.csv).length, nFe = Object.keys(D.fattEtsy).length, nPr = Object.keys(D.printify).length;
+  return '<div class="card"><h2>Da dove leggo</h2>' +
+    '<p class="hint">Collega una volta la cartella <strong>PARTITA IVA</strong> di iCloud: a ogni apertura rileggo da solo tutto quello che c\'è dentro, sottocartelle comprese. Riconosco tre tipi di file e ignoro il resto.</p>' +
+    '<div class="row">' +
+      (cartellaOk ? '<button class="btn" id="bCollega">🔗 Collega la cartella</button><button class="btn ghost" id="bRileggi">🔄 Rileggi</button><button class="btn ghost" id="bScollega">Scollega</button>'
+                  : '<span class="hint">Questo browser non sa collegarsi a una cartella (serve Chrome o Edge). Puoi scegliere i file a mano.</span>') +
+      '<button class="btn ghost" id="bFile">Scegli i file</button>' +
+    '</div>' +
+    (statoCartella ? '<p class="hint" style="margin-top:10px">' + esc(statoCartella) + '</p>' : '') +
+    '<div id="drop">oppure trascina qui i CSV e i PDF</div></div>' +
+    '<div class="card"><h3>Cosa serve, mese per mese</h3><div class="tw"><table>' +
+    '<tr><th>File</th><th>Dove si scarica</th><th>A cosa serve</th><th class="n">Letti</th></tr>' +
+    '<tr><td><strong>etsy_statement_AAAA_M.csv</strong></td><td>Etsy → Shop Manager → Finances → Monthly statements → Download CSV (dal giorno 1)</td><td>Ogni maglietta venduta: il corrispettivo</td><td class="n">' + nCsv + ' mesi</td></tr>' +
+    '<tr><td><strong>tax_statement_AAAA-M.pdf</strong></td><td>Stessa pagina, riquadro VAT reporting (qualche giorno dopo la fine del mese)</td><td>La fattura mensile di Etsy: spesa</td><td class="n">' + nFe + '</td></tr>' +
+    '<tr><td><strong>…order_invoice.pdf</strong></td><td>Printify → ordine → Billing → Download</td><td>Ogni maglietta stampata: spesa se c\'è la tua partita IVA</td><td class="n">' + nPr + '</td></tr>' +
+    '</table></div></div>';
+}
+
+function vistaAnno(C) {
+  const anni = {}; C.lista.forEach(m => (anni[m.mese.slice(0, 4)] = anni[m.mese.slice(0, 4)] || []).push(m));
+  let h = '';
+  Object.keys(anni).sort().reverse().forEach(a => {
+    const L = anni[a], S = k => r2(L.reduce((s, m) => s + m[k], 0));
+    h += '<div class="nums">' +
+      '<div class="num"><div class="l">Vendite Etsy ' + a + ' (corrispettivi)</div><div class="v">' + eur(S('corrispettivi')) + '</div><div class="s">' + L.reduce((s, m) => s + m.vendite.length, 0) + ' ordini</div></div>' +
+      '<div class="num"><div class="l">Fatture Etsy ' + a + ' (spese)</div><div class="v">' + eur(S('speseEtsy')) + '</div><div class="s">' + L.reduce((s, m) => s + m.fattEtsy.length, 0) + ' fatture mensili</div></div>' +
+      '<div class="num"><div class="l">Printify ' + a + ' con partita IVA (spese)</div><div class="v">' + eur(S('spesePrintify')) + '</div><div class="s">altre ' + eur(S('printifyFuori')) + ' senza partita IVA, non dichiarate</div></div>' +
+      '</div>';
+    h += '<div class="card"><h2>' + a + ' mese per mese</h2><div class="tw"><table><tr><th>Mese</th><th class="n">Vendute</th><th class="n">Corrispettivi</th><th class="n">Fattura Etsy</th><th class="n">Stampate</th><th class="n">Printify da dichiarare</th><th class="n">Printify fuori</th><th>Stato</th></tr>';
+    L.forEach(m => {
+      h += '<tr><td><a href="#" data-vai="' + m.mese + '">' + MESI[+m.mese.slice(5) - 1] + '</a></td>' +
+        '<td class="n">' + (m.haCsv ? m.vendite.length : '<span class="tag av">manca CSV</span>') + '</td><td class="n">' + (m.haCsv ? eur(m.corrispettivi) : '—') + '</td>' +
+        '<td class="n">' + (m.fattEtsy.length ? eur(m.speseEtsy) : '—') + '</td><td class="n">' + m.printify.length + '</td>' +
+        '<td class="n">' + eur(m.spesePrintify) + '</td><td class="n">' + eur(m.printifyFuori) + '</td>' +
+        '<td>' + (!m.voci.length ? '<span class="pill none">niente</span>' : m.daFare ? '<span class="pill todo">' + m.daFare + ' da fare</span>' : '<span class="pill ok">✓ fatto</span>') + '</td></tr>';
+    });
+    h += '</table></div></div>';
+  });
+  return h;
+}
+
+function spunta(k) { return '<input type="checkbox" data-k="' + esc(k) + '"' + (fatti[k] ? ' checked' : '') + ' title="Registrato su Fiscozen">'; }
+
+function vistaMese(m) {
+  let h = '<div class="nums">' +
+    '<div class="num"><div class="l">Corrispettivi Etsy</div><div class="v">' + (m.haCsv ? eur(m.corrispettivi) : '—') + '</div><div class="s">' + (m.haCsv ? m.vendite.length + ' ordini, ' + m.pezzi + ' magliette' : 'manca l\'estratto CSV') + '</div></div>' +
+    '<div class="num"><div class="l">Fattura Etsy (spesa)</div><div class="v">' + (m.fattEtsy.length ? eur(m.speseEtsy) : '—') + '</div><div class="s">' + (m.fattEtsy.length ? 'n. ' + m.fattEtsy.map(f => f.numero).join(', ') : 'non ancora scaricata') + '</div></div>' +
+    '<div class="num"><div class="l">Printify da dichiarare (spesa)</div><div class="v">' + eur(m.spesePrintify) + '</div><div class="s">' + m.prSi.length + ' fatture con partita IVA, ' + m.prNo.length + ' senza</div></div>' +
+    '<div class="num"><div class="l">Ancora da registrare</div><div class="v">' + m.daFare + '</div><div class="s">su ' + m.voci.length + ' voci di ' + nomeMese(m.mese) + '</div></div></div>';
+
+  h += '<div class="card"><h2>Vendite Etsy di ' + nomeMese(m.mese) + '</h2><p class="hint" style="margin-bottom:10px">Ogni riga è un corrispettivo da registrare: data dell\'ordine e totale pagato dal cliente. Spunta quando l\'hai registrato.</p>';
+  const inCorso = m.mese >= new Date().getFullYear() + '-' + p2(new Date().getMonth() + 1);
+  if (!m.haCsv && inCorso) h += '<p class="hint">Mese in corso: Etsy pubblica l\'estratto <strong>etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv</strong> dal giorno 1 del mese dopo. Fino ad allora le vendite si vedono solo dalle stampe Printify qui sotto.</p>';
+  else if (!m.haCsv) h += '<p class="hint"><span class="tag av">manca</span> Scarica <strong>etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv</strong> da Etsy e mettilo nella cartella: senza, le vendite di questo mese non si vedono.</p>';
+  else if (!m.vendite.length) h += '<p class="hint">Nessuna vendita in questo mese.</p>';
+  else {
+    h += '<div class="tw"><table><tr><th></th><th>Data</th><th>Ordine</th><th>Maglietta</th><th class="n">Pagato dal cliente</th><th class="n">di cui tasse trattenute</th><th class="n">Commissioni Etsy</th><th class="n">Stampa Printify</th></tr>';
+    m.vendite.forEach(v => {
+      h += '<tr class="' + (fatti['v:' + v.ordine] ? 'fatto' : '') + '"><td>' + spunta('v:' + v.ordine) + '</td><td>' + dataIt(v.data) + '</td><td>' + esc(v.ordine) + '</td><td>' + (v.titoli.map(esc).join('<br>') || '—') + '</td>' +
+        '<td class="n"><strong>' + eur(v.incassato) + '</strong></td><td class="n">' + (v.tasse ? eur(v.tasse) : '—') + '</td><td class="n">' + eur(v.comm) + '</td>' +
+        '<td class="n">' + (v.stampe.length ? eur(v.costoStampa) : '<span class="tag av">manca fattura</span>') + '</td></tr>';
+    });
+    h += '<tr><td></td><td colspan="3"><strong>Totale</strong></td><td class="n"><strong>' + eur(m.corrispettivi) + '</strong></td><td class="n">' + eur(m.tasse) + '</td><td class="n"></td><td class="n"></td></tr></table></div>';
+    if (m.tasse) h += '<p class="hint" style="margin-top:10px">Le tasse trattenute sono la sales tax o l\'IVA estera che Etsy incassa dal cliente e versa per conto suo: fanno parte di quanto ha pagato il cliente ma a te non arrivano. Se vadano dentro o fuori dal corrispettivo è una scelta da confermare col commercialista.</p>';
+  }
+  if (m.rimborsi.length) h += '<p class="hint" style="margin-top:10px"><span class="tag av">rimborsi</span> ' + m.rimborsi.map(r => dataIt(r.data) + ' ' + eur(r.importo) + ' ordine ' + esc(r.ordine)).join(' · ') + '</p>';
+  h += '</div>';
+
+  h += '<div class="card"><h2>Fattura mensile di Etsy</h2><p class="hint" style="margin-bottom:10px">Le commissioni del mese: una spesa sola, con la fattura di Etsy Ireland.</p>';
+  if (!m.fattEtsy.length) h += '<p class="hint"><span class="tag av">manca</span> Non c\'è ancora <strong>tax_statement_' + m.mese.slice(0, 4) + '-' + (+m.mese.slice(5)) + '.pdf</strong>. Etsy la pubblica qualche giorno dopo la fine del mese.' + (m.haCsv ? ' Dall\'estratto le commissioni fin qui sono ' + eur(m.feeCsv) + '.' : '') + '</p>';
+  else {
+    h += '<div class="tw"><table><tr><th></th><th>Data</th><th>Fattura</th><th>Emessa da</th><th>Partita IVA</th><th class="n">Totale</th></tr>';
+    m.fattEtsy.forEach(f => {
+      h += '<tr class="' + (fatti['e:' + f.numero] ? 'fatto' : '') + '"><td>' + spunta('e:' + f.numero) + '</td><td>' + dataIt(f.data) + '</td><td>' + esc(f.numero) + '</td><td>' + esc(f.emittente || 'non riconosciuta') + '</td><td>' + (f.piva ? '<span class="tag si">' + esc(f.piva) + '</span>' : '<span class="tag av">assente</span>') + '</td><td class="n"><strong>' + eur(f.totale) + '</strong></td></tr>';
+    });
+    h += '</table></div>';
+  }
+  h += '</div>';
+
+  h += '<div class="card"><h2>Magliette stampate da Printify</h2><p class="hint" style="margin-bottom:10px">Una fattura per ogni ordine prodotto. Va nelle spese solo quella che porta la tua partita IVA: le altre sono elencate ma non hanno la spunta.</p>';
+  if (!m.printify.length) h += '<p class="hint">Nessuna fattura Printify in questo mese.</p>';
+  else {
+    h += '<div class="tw"><table><tr><th></th><th>Data</th><th>Fattura</th><th>Maglietta</th><th>Spedita in</th><th>Emessa da</th><th>Da dichiarare</th><th class="n">Totale</th></tr>';
+    m.printify.forEach(p => {
+      const si = daDichiarare(p);
+      h += '<tr class="' + (si ? (fatti['p:' + p.numero] ? 'fatto' : '') : 'no') + '"><td>' + (si ? spunta('p:' + p.numero) : '') + '</td><td>' + dataIt(p.data) + '</td><td>' + esc(p.numero) + (p.ordine ? '<br><span class="hint">Etsy ' + esc(p.ordine) + '</span>' : '<br><span class="hint">senza ordine Etsy</span>') + '</td>' +
+        '<td>' + (p.articoli.map(esc).join('<br>') || '—') + '</td><td>' + esc(p.shipTo) + '</td><td>' + esc(p.emittente || 'non riconosciuta') + '</td>' +
+        '<td>' + (si ? '<span class="tag si">sì, ' + esc(p.piva) + '</span>' : ueSenzaPiva(p) ? '<span class="tag av">da chiarire: fornitore UE senza partita IVA</span>' : '<span class="tag nn">no, senza partita IVA</span>') + '</td><td class="n"><strong>' + eur(p.totale) + '</strong></td></tr>';
+    });
+    h += '<tr><td></td><td colspan="6"><strong>Totale da dichiarare</strong></td><td class="n"><strong>' + eur(m.spesePrintify) + '</strong></td></tr>' +
+         '<tr class="no"><td></td><td colspan="6">Totale senza partita IVA</td><td class="n">' + eur(m.printifyFuori) + '</td></tr></table></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function vistaVerifica(ck) {
+  const ic = { ok: '✅', av: '⚠️', err: '❌' };
+  return '<div class="card"><h2>Verifica dati</h2><p class="hint" style="margin-bottom:8px">Controlli fatti da soli a ogni lettura.</p>' +
+    ck.map(c => '<div class="chk"><div class="i">' + ic[c.st] + '</div><div>' + esc(c.titolo) + (c.righe.length ? '<ul>' + c.righe.map(r => '<li>' + esc(r) + '</li>').join('') + '</ul>' : '') + '</div></div>').join('') + '</div>';
+}
+
+function aggancia() {
+  const $ = id => document.getElementById(id);
+  if ($('bCollega')) $('bCollega').onclick = collega;
+  if ($('bRileggi')) $('bRileggi').onclick = () => rileggi(false);
+  if ($('bScollega')) $('bScollega').onclick = scollega;
+  if ($('bFile')) $('bFile').onclick = () => $('fileIn').click();
+  const dz = $('drop');
+  if (dz) {
+    dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+    dz.ondragleave = () => dz.classList.remove('over');
+    dz.ondrop = async e => { e.preventDefault(); dz.classList.remove('over'); await aggiungi([...e.dataTransfer.files]); };
+  }
+  document.querySelectorAll('[data-vai]').forEach(a => a.onclick = e => { e.preventDefault(); vista = a.dataset.vai; disegna(); window.scrollTo(0, 0); });
+  document.querySelectorAll('input[data-k]').forEach(c => c.onchange = () => {
+    if (c.checked) fatti[c.dataset.k] = FX.todayISO(); else delete fatti[c.dataset.k];
+    salva(); disegna();
+  });
+}
+async function aggiungi(files) {
+  scarti = [];
+  const n = await leggiFile(files);
+  statoCartella = n + ' documenti letti' + (scarti.length ? ', ' + scarti.length + ' scartati (vedi Verifica dati)' : '') + '.';
+  if (n) vista = 'anno';
+  disegna();
+}
+document.getElementById('fileIn').onchange = async e => { await aggiungi([...e.target.files]); e.target.value = ''; };
+
+// Per le prove: stesso ingresso dei file trascinati.
+window.ETSY = { aggiungi, conti, controlli, dati: () => D };
+
+if (Object.keys(D.csv).length || Object.keys(D.fattEtsy).length || Object.keys(D.printify).length) vista = 'anno';
+disegna();
+if (cartellaOk) rileggi(true);
+</script>
+</body>
+</html>

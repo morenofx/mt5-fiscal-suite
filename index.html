@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MT5 Fiscal Suite</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
-<script src="fx.js?v=2026-11-04c"></script>
+<script src="fx.js?v=2026-11-13a"></script>
 <style>
   :root {
     --bg: #0b0e14; --surface: #131720; --surface2: #1a1f2e;
@@ -51,6 +51,9 @@
   .card.gold .go { background: var(--gold); color: #1a1200; }
   .card.gold:hover { border-color: var(--gold); }
   .card.gold li::before { color: var(--gold); }
+  .card.green .go { background: var(--green); color: #04130d; }
+  .card.green:hover { border-color: var(--green); }
+  .card.green li::before { color: var(--green); }
 
   .note {
     margin-top: 32px; background: var(--surface); border: 1px solid var(--border);
@@ -71,7 +74,7 @@
   <header>
     <div class="badge">🧾 Dichiarazione dei redditi</div>
     <h1>MT5 Fiscal Suite</h1>
-    <p class="sub">Due strumenti per preparare i dati da consegnare al commercialista.<br>Tutto gira nel browser: i tuoi dati non escono da questo dispositivo.</p>
+    <p class="sub">Tre strumenti per preparare i dati da consegnare al commercialista.<br>Tutto gira nel browser: i tuoi dati non escono da questo dispositivo.</p>
   </header>
 
   <div class="cards">
@@ -104,11 +107,25 @@
       <span class="go">Apri il calculator →</span>
     </a>
 
+    <a class="card green" href="etsy.html">
+      <div class="icon">👕</div>
+      <h2>Etsy e Printify</h2>
+      <p class="what">Magliette vendute e stampate — cosa registrare mese per mese.</p>
+      <ul>
+        <li>Legge da solo la cartella con estratti Etsy e fatture PDF</li>
+        <li>Ogni maglietta venduta su Etsy: il corrispettivo</li>
+        <li>La fattura mensile di Etsy: la spesa del mese</li>
+        <li>Printify: spesa solo se la fattura porta la tua partita IVA</li>
+        <li>Spunti ciò che hai registrato e vedi cosa manca</li>
+      </ul>
+      <span class="go">Apri Etsy e Printify →</span>
+    </a>
+
   </div>
 
   <div class="fx">
     💱 <strong style="color:var(--text)">Cambio USD/EUR condiviso.</strong>
-    Entrambe le app usano lo stesso motore, con la stessa convenzione: <span class="val">1 USD = X EUR</span>.
+    L'analyzer e il calculator usano lo stesso motore, con la stessa convenzione: <span class="val">1 USD = X EUR</span>.
     Fonte: tassi di riferimento BCE, gli stessi pubblicati da
     <a class="plain" href="https://tassidicambio.bancaditalia.it/" target="_blank" rel="noopener">Banca d'Italia</a>.
     <div id="fxState" style="margin-top:10px;"></div>
