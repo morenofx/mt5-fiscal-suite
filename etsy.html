@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Etsy e Printify — MT5 Fiscal Suite</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👕</text></svg>">
-<script src="fx.js?v=2026-11-13a"></script>
+<script src="fx.js?v=2026-11-13b"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root {
@@ -95,7 +95,7 @@
 
 <footer><span id="suiteLabel"></span><br>i file vengono letti nel browser: niente esce da questo dispositivo</footer>
 
-<input type="file" id="fileIn" multiple accept=".csv,.pdf" style="display:none">
+<input type="file" id="fileIn" multiple accept=".csv,.pdf,.json" style="display:none">
 
 <script>
 'use strict';
@@ -108,9 +108,10 @@ if (window.pdfjsLib) {
 // csv:      { 'AAAA-MM': { righe: [...], file } }   una sola copia per mese
 // fattEtsy: { numero: {...} }                        fattura mensile Etsy (PDF)
 // printify: { numero: {...} }                        fattura per ordine Printify (PDF)
+// auto:     { generato, etsy:{vendite}, printify:{stampe} }  lettura notturna del Mac mini
 // fatti:    { chiave: 'AAAA-MM-GG' }                 cosa e' gia' stato registrato
 const K_DATI = 'etsyfs_dati_v1', K_FATTI = 'etsyfs_fatti_v1';
-let D = { csv: {}, fattEtsy: {}, printify: {} };
+let D = { csv: {}, fattEtsy: {}, printify: {}, auto: null };
 let fatti = {};
 let scarti = [];          // file non letti o doppioni, con il motivo
 let vista = 'carica';
@@ -275,7 +276,13 @@ async function leggiFile(files) {
     try {
       if (f.size === 0) { scarti.push({ file: nome, motivo: 'file vuoto (segnaposto iCloud non scaricato?)' }); continue; }
       let err;
-      if (/\.csv$/i.test(nome)) err = leggiCsvEtsy(await f.text(), nome);
+      if (/\.json$/i.test(nome)) {
+        let j = null; try { j = JSON.parse(await f.text()); } catch (e) {}
+        if (!j || j.tipo !== 'etsy_printify_auto') continue;      // un altro json: non e' affar nostro
+        if (D.auto && D.auto.generato > j.generato) { scarti.push({ file: nome, motivo: 'lettura automatica piu\' vecchia di quella gia\' letta' }); continue; }
+        D.auto = j; D.auto.file = nome;
+      }
+      else if (/\.csv$/i.test(nome)) err = leggiCsvEtsy(await f.text(), nome);
       else if (/\.pdf$/i.test(nome)) {
         if (!window.pdfjsLib) { err = 'lettore PDF non caricato (serve la connessione la prima volta)'; }
         else {
@@ -297,7 +304,7 @@ async function leggiFile(files) {
 // ==================== CONTI ====================
 function conti() {
   const vendite = {}, mesi = {}, ignoti = {}, valute = {};
-  const M = m => (mesi[m] = mesi[m] || { mese: m, vendite: [], rimborsi: [], feeCsv: 0, haCsv: false, fattEtsy: [], printify: [] });
+  const M = m => (mesi[m] = mesi[m] || { mese: m, vendite: [], rimborsi: [], feeCsv: 0, haCsv: false, haApi: false, fattEtsy: [], printify: [], daScaricare: [] });
   Object.keys(D.csv).forEach(m => {
     const mm = M(m); mm.haCsv = true;
     D.csv[m].righe.forEach(x => {
@@ -322,15 +329,46 @@ function conti() {
       } else ignoti[x.tipo || '(vuoto)'] = (ignoti[x.tipo || '(vuoto)'] || 0) + 1;
     });
   });
+  // Lettura automatica: aggiunge le vendite dei mesi senza estratto CSV. Dove c'e'
+  // anche il CSV comanda il CSV (ha pure le commissioni) e i due si confrontano.
+  const A = D.auto, aEtsy = A && A.etsy && (A.etsy.vendite || []).length ? A.etsy.vendite : [];
+  const aPr = A && A.printify && (A.printify.stampe || []).length ? A.printify.stampe : [];
+  const diffApi = [];
+  aEtsy.forEach(a => {
+    if (a.pagato == null) return;
+    if (a.valuta && a.valuta !== 'EUR') valute[a.valuta] = 1;
+    const v = vendite[a.ordine];
+    if (v && v.haSale) {
+      if (Math.abs(v.incassato - a.pagato) > 0.005 || Math.abs(v.tasse - a.tasse) > 0.005) diffApi.push({ ordine: a.ordine, csv: v.incassato, api: a.pagato });
+    } else {
+      vendite[a.ordine] = { ordine: a.ordine, data: a.data, incassato: a.pagato, tasse: a.tasse || 0, comm: v ? v.comm : null,
+                            titoli: (a.titoli || []).map(s => s.length > 60 ? s.slice(0, 60) : s), haSale: true, daApi: true };
+    }
+    const w = vendite[a.ordine];
+    w.paese = a.paese || ''; w.rimborsato = a.rimborsato || 0; w.stato = a.stato || ''; w.pezziApi = a.pezzi;
+  });
+
   const stampe = {};
   Object.values(D.printify).forEach(p => { if (p.ordine) (stampe[p.ordine] = stampe[p.ordine] || []).push(p); M(p.data.slice(0, 7)).printify.push(p); });
+  // Stampe viste dal Mini di cui non c'e' ancora la fattura PDF: l'importo in euro
+  // e la partita IVA stanno solo nel PDF, quindi restano righe "da scaricare".
+  const pdfSenzaOrdine = Object.values(D.printify).filter(p => !p.ordine).map(p => p.data);
+  const stampeApi = {};
+  aPr.forEach(s => {
+    if (s.ordine_etsy) stampeApi[s.ordine_etsy] = s;
+    const haPdf = s.ordine_etsy ? !!stampe[s.ordine_etsy] : pdfSenzaOrdine.indexOf(s.data) >= 0;
+    if (!haPdf && s.data) M(s.data.slice(0, 7)).daScaricare.push(s);
+  });
   Object.values(vendite).forEach(v => {
     if (!v.haSale) return;      // commissioni di un ordine pagato in un altro mese
     v.stampe = stampe[v.ordine] || [];
+    v.stampaApi = stampeApi[v.ordine] || null;
     v.costoStampa = r2(v.stampe.reduce((s, p) => s + p.totale, 0));
-    v.pezzi = v.titoli.length || 1;
+    v.pezzi = v.pezziApi || v.titoli.length || 1;
     M(v.data.slice(0, 7)).vendite.push(v);
   });
+  // Con la lettura automatica riuscita le vendite di ogni mese sono note, anche di quelli a zero.
+  if (A && A.etsy && A.etsy.vendite && (A.etsy.ok || A.etsy.vendite.length)) Object.values(mesi).forEach(m => { m.haApi = true; });
   Object.values(D.fattEtsy).forEach(f => M(f.mese).fattEtsy.push(f));
   const lista = Object.values(mesi).sort((a, b) => b.mese.localeCompare(a.mese));
   lista.forEach(m => {
@@ -345,11 +383,13 @@ function conti() {
     m.prNo = m.printify.filter(p => !daDichiarare(p));
     m.spesePrintify = r2(m.prSi.reduce((s, p) => s + p.totale, 0));
     m.printifyFuori = r2(m.prNo.reduce((s, p) => s + p.totale, 0));
-    m.stampate = m.printify.reduce((s, p) => s + (p.pezzi || 1), 0);
+    m.stampate = m.printify.length + m.daScaricare.length;
+    m.haVendite = m.haCsv || m.haApi;
+    m.daScaricare.sort((a, b) => a.data.localeCompare(b.data));
     m.voci = m.vendite.map(v => 'v:' + v.ordine).concat(m.fattEtsy.map(f => 'e:' + f.numero), m.prSi.map(p => 'p:' + p.numero));
     m.daFare = m.voci.filter(k => !fatti[k]).length;
   });
-  return { lista, vendite, stampe, ignoti, valute: Object.keys(valute) };
+  return { lista, vendite, stampe, ignoti, valute: Object.keys(valute), diffApi, aEtsy, aPr };
 }
 
 // La regola: Printify entra nelle spese solo se la fattura porta la partita IVA
@@ -363,8 +403,20 @@ function controlli(C) {
   const out = [], oggi = new Date(), meseOra = oggi.getFullYear() + '-' + p2(oggi.getMonth() + 1);
   const add = (st, titolo, righe) => out.push({ st, titolo, righe: righe || [] });
 
-  const senzaStampa = []; C.lista.forEach(m => m.vendite.forEach(v => { if (!v.stampe.length) senzaStampa.push(dataIt(v.data) + ' ' + v.data.slice(0, 4) + ' — ordine ' + v.ordine + ' (' + (v.titoli[0] || 'titolo non letto') + ')'); }));
-  add(senzaStampa.length ? 'av' : 'ok', senzaStampa.length ? 'Vendite Etsy senza la fattura Printify della stampa: ' + senzaStampa.length : 'Ogni vendita Etsy ha la sua fattura Printify', senzaStampa);
+  if (D.auto) {
+    const gg = Math.floor((Date.now() - new Date(D.auto.generato).getTime()) / 86400000);
+    const guai = [];
+    if (!D.auto.etsy.ok) guai.push('Etsy: ' + (D.auto.etsy.errore || 'errore') + (D.auto.etsy.dati_del ? ' (dati fermi al ' + D.auto.etsy.dati_del.slice(0, 10) + ')' : ''));
+    if (!D.auto.printify.ok) guai.push('Printify: ' + (D.auto.printify.errore || 'errore') + (D.auto.printify.dati_del ? ' (dati fermi al ' + D.auto.printify.dati_del.slice(0, 10) + ')' : ''));
+    if (gg > 2) guai.push('l\'ultima lettura e\' di ' + gg + ' giorni fa: il Mac mini non sta aggiornando');
+    add(guai.length ? 'err' : 'ok', guai.length ? 'Lettura automatica dal Mac mini con problemi' : 'Lettura automatica dal Mac mini aggiornata al ' + D.auto.generato.slice(0, 16).replace('T', ' ') + ' (' + C.aEtsy.length + ' vendite, ' + C.aPr.length + ' stampe)', guai);
+    if (C.aEtsy.length) add(C.diffApi.length ? 'err' : 'ok', C.diffApi.length ? 'Vendite diverse fra estratto CSV e lettura automatica: ' + C.diffApi.length : 'Dove c\'e\' anche l\'estratto CSV, coincide con la lettura automatica', C.diffApi.map(d => 'ordine ' + d.ordine + ' — CSV ' + eur(d.csv) + ', automatica ' + eur(d.api)));
+    const scar = []; C.lista.forEach(m => m.daScaricare.forEach(s => scar.push(dataIt(s.data) + ' ' + s.data.slice(0, 4) + ' — ' + (s.ordine_etsy ? 'ordine Etsy ' + s.ordine_etsy : 'ordine senza Etsy') + ', spedita in ' + s.paese + ' (' + ((s.titoli || [])[0] || '').slice(0, 40) + ')')));
+    add(scar.length ? 'av' : 'ok', scar.length ? 'Fatture Printify da scaricare (maglietta stampata, PDF non in cartella): ' + scar.length : 'Ogni maglietta stampata ha la sua fattura PDF in cartella', scar);
+  }
+
+  const senzaStampa = []; C.lista.forEach(m => m.vendite.forEach(v => { if (!v.stampe.length && !v.stampaApi) senzaStampa.push(dataIt(v.data) + ' ' + v.data.slice(0, 4) + ' — ordine ' + v.ordine + ' (' + (v.titoli[0] || 'titolo non letto') + ')'); }));
+  add(senzaStampa.length ? 'av' : 'ok', senzaStampa.length ? 'Vendite Etsy di cui non vedo la stampa Printify: ' + senzaStampa.length : 'Ogni vendita Etsy ha la sua stampa Printify', senzaStampa);
 
   const senzaVendita = [], mesiSenzaCsv = {};
   Object.values(D.printify).forEach(p => {
@@ -380,8 +432,8 @@ function controlli(C) {
   const mancaCsv = [], mancaFatt = [], diff = [];
   C.lista.forEach(m => {
     // L'estratto del mese in corso Etsy lo pubblica dal giorno 1 del mese dopo.
-    if (!m.haCsv && m.mese < meseOra && (m.fattEtsy.length || mesiSenzaCsv[m.mese])) mancaCsv.push(nomeMese(m.mese) + ' — scaricare etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv');
-    if (m.haCsv && !m.fattEtsy.length && m.mese < meseOra) mancaFatt.push(nomeMese(m.mese));
+    if (!m.haVendite && m.mese < meseOra && (m.fattEtsy.length || mesiSenzaCsv[m.mese])) mancaCsv.push(nomeMese(m.mese) + ' — scaricare etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv');
+    if ((m.haCsv || (m.haApi && m.vendite.length)) && !m.fattEtsy.length && m.mese < meseOra) mancaFatt.push(nomeMese(m.mese));
     if (m.haCsv && m.fattEtsy.length && Math.abs(m.feeCsv - m.speseEtsy) > 0.05) diff.push(nomeMese(m.mese) + ' — fattura ' + eur(m.speseEtsy) + ', commissioni nell\'estratto ' + eur(m.feeCsv));
   });
   add(mancaCsv.length ? 'err' : 'ok', mancaCsv.length ? 'Mesi senza l\'estratto CSV di Etsy (le vendite di quei mesi non si vedono): ' + mancaCsv.length : 'Nessun mese con fattura ma senza estratto CSV', mancaCsv);
@@ -397,7 +449,7 @@ function controlli(C) {
   const chiar = Object.values(D.printify).filter(ueSenzaPiva).map(p => dataIt(p.data) + ' ' + p.data.slice(0, 4) + ' — fattura ' + p.numero + ', ' + eur(p.totale) + ', spedita in ' + p.shipTo);
   if (chiar.length) add('av', 'Fatture Printify dell\'entita\' europea ma senza la tua partita IVA: ' + chiar.length + ' (lasciate fuori dalle spese, chiedere al commercialista)', chiar);
 
-  const rimb = []; C.lista.forEach(m => m.rimborsi.forEach(r => rimb.push(dataIt(r.data) + ' ' + r.data.slice(0, 4) + ' — ' + eur(r.importo) + ' ordine ' + r.ordine)));
+  const rimb = []; C.lista.forEach(m => { m.rimborsi.forEach(r => rimb.push(dataIt(r.data) + ' ' + r.data.slice(0, 4) + ' — ' + eur(r.importo) + ' ordine ' + r.ordine)); m.vendite.forEach(v => { if (v.rimborsato) rimb.push('vendita del ' + dataIt(v.data) + ' ' + v.data.slice(0, 4) + ' — ordine ' + v.ordine + ', rimborsati ' + eur(v.rimborsato) + ' su ' + eur(v.incassato)); }); });
   if (rimb.length) add('av', 'Rimborsi a clienti: ' + rimb.length + ' (da stornare a mano, chiedere al commercialista come)', rimb);
   if (scarti.length) add('av', 'File scartati o non letti in questa lettura: ' + scarti.length, scarti.map(s => s.file + ' — ' + s.motivo));
   return out;
@@ -426,7 +478,7 @@ async function fileDallaCartella(dir, dentro) {
   for await (const [nome, h] of dir.entries()) {
     if (nome.startsWith('_') || nome.startsWith('.')) continue;
     if (h.kind === 'directory') out.push(...await fileDallaCartella(h, dentro + nome + '/'));
-    else if (/\.(csv|pdf)$/i.test(nome)) {
+    else if (/\.(csv|pdf|json)$/i.test(nome)) {
       const f = await h.getFile();
       out.push(new File([f], dentro + nome, { type: f.type, lastModified: f.lastModified }));
     }
@@ -457,7 +509,7 @@ async function rileggi(silenzioso) {
   let files;
   try { files = await fileDallaCartella(dir, ''); }
   catch (e) { statoCartella = '⚠️ Non riesco a leggere la cartella: ' + (e.message || e); disegna(); return; }
-  D = { csv: {}, fattEtsy: {}, printify: {} }; scarti = [];
+  D = { csv: {}, fattEtsy: {}, printify: {}, auto: null }; scarti = [];
   const n = await leggiFile(files);
   statoCartella = '✅ Cartella «' + dir.name + '»: ' + n + ' documenti letti, ' + new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) + '.';
   if (vista === 'carica' && n) vista = 'anno';
@@ -507,7 +559,8 @@ function vistaCarica(C) {
     '<div id="drop">oppure trascina qui i CSV e i PDF</div></div>' +
     '<div class="card"><h3>Cosa serve, mese per mese</h3><div class="tw"><table>' +
     '<tr><th>File</th><th>Dove si scarica</th><th>A cosa serve</th><th class="n">Letti</th></tr>' +
-    '<tr><td><strong>etsy_statement_AAAA_M.csv</strong></td><td>Etsy → Shop Manager → Finances → Monthly statements → Download CSV (dal giorno 1)</td><td>Ogni maglietta venduta: il corrispettivo</td><td class="n">' + nCsv + ' mesi</td></tr>' +
+    '<tr><td><strong>vendite_e_stampe.json</strong></td><td>Lo scrive da solo il Mac mini ogni mattina in <em>ETSY PRINTIFY AUTOMATICO</em></td><td>Ogni maglietta venduta (corrispettivo) e l\'elenco di quelle stampate</td><td class="n">' + (D.auto ? D.auto.generato.slice(0, 10) : 'no') + '</td></tr>' +
+    '<tr><td><strong>etsy_statement_AAAA_M.csv</strong></td><td>Facoltativo: Etsy → Shop Manager → Finances → Monthly statements → Download CSV</td><td>Aggiunge le commissioni per ordine e fa da riscontro</td><td class="n">' + nCsv + ' mesi</td></tr>' +
     '<tr><td><strong>tax_statement_AAAA-M.pdf</strong></td><td>Stessa pagina, riquadro VAT reporting (qualche giorno dopo la fine del mese)</td><td>La fattura mensile di Etsy: spesa</td><td class="n">' + nFe + '</td></tr>' +
     '<tr><td><strong>…order_invoice.pdf</strong></td><td>Printify → ordine → Billing → Download</td><td>Ogni maglietta stampata: spesa se c\'è la tua partita IVA</td><td class="n">' + nPr + '</td></tr>' +
     '</table></div></div>';
@@ -526,8 +579,8 @@ function vistaAnno(C) {
     h += '<div class="card"><h2>' + a + ' mese per mese</h2><div class="tw"><table><tr><th>Mese</th><th class="n">Vendute</th><th class="n">Corrispettivi</th><th class="n">Fattura Etsy</th><th class="n">Stampate</th><th class="n">Printify da dichiarare</th><th class="n">Printify fuori</th><th>Stato</th></tr>';
     L.forEach(m => {
       h += '<tr><td><a href="#" data-vai="' + m.mese + '">' + MESI[+m.mese.slice(5) - 1] + '</a></td>' +
-        '<td class="n">' + (m.haCsv ? m.vendite.length : '<span class="tag av">manca CSV</span>') + '</td><td class="n">' + (m.haCsv ? eur(m.corrispettivi) : '—') + '</td>' +
-        '<td class="n">' + (m.fattEtsy.length ? eur(m.speseEtsy) : '—') + '</td><td class="n">' + m.printify.length + '</td>' +
+        '<td class="n">' + (m.haVendite ? m.vendite.length : '<span class="tag av">manca CSV</span>') + '</td><td class="n">' + (m.haVendite ? eur(m.corrispettivi) : '—') + '</td>' +
+        '<td class="n">' + (m.fattEtsy.length ? eur(m.speseEtsy) : '—') + '</td><td class="n">' + m.stampate + (m.daScaricare.length ? ' <span class="tag av">' + m.daScaricare.length + ' PDF da scaricare</span>' : '') + '</td>' +
         '<td class="n">' + eur(m.spesePrintify) + '</td><td class="n">' + eur(m.printifyFuori) + '</td>' +
         '<td>' + (!m.voci.length ? '<span class="pill none">niente</span>' : m.daFare ? '<span class="pill todo">' + m.daFare + ' da fare</span>' : '<span class="pill ok">✓ fatto</span>') + '</td></tr>';
     });
@@ -540,22 +593,22 @@ function spunta(k) { return '<input type="checkbox" data-k="' + esc(k) + '"' + (
 
 function vistaMese(m) {
   let h = '<div class="nums">' +
-    '<div class="num"><div class="l">Corrispettivi Etsy</div><div class="v">' + (m.haCsv ? eur(m.corrispettivi) : '—') + '</div><div class="s">' + (m.haCsv ? m.vendite.length + ' ordini, ' + m.pezzi + ' magliette' : 'manca l\'estratto CSV') + '</div></div>' +
+    '<div class="num"><div class="l">Corrispettivi Etsy</div><div class="v">' + (m.haVendite ? eur(m.corrispettivi) : '—') + '</div><div class="s">' + (m.haVendite ? m.vendite.length + ' ordini, ' + m.pezzi + ' magliette' : 'manca l\'estratto CSV') + '</div></div>' +
     '<div class="num"><div class="l">Fattura Etsy (spesa)</div><div class="v">' + (m.fattEtsy.length ? eur(m.speseEtsy) : '—') + '</div><div class="s">' + (m.fattEtsy.length ? 'n. ' + m.fattEtsy.map(f => f.numero).join(', ') : 'non ancora scaricata') + '</div></div>' +
-    '<div class="num"><div class="l">Printify da dichiarare (spesa)</div><div class="v">' + eur(m.spesePrintify) + '</div><div class="s">' + m.prSi.length + ' fatture con partita IVA, ' + m.prNo.length + ' senza</div></div>' +
+    '<div class="num"><div class="l">Printify da dichiarare (spesa)</div><div class="v">' + eur(m.spesePrintify) + '</div><div class="s">' + m.prSi.length + ' fatture con partita IVA, ' + m.prNo.length + ' senza' + (m.daScaricare.length ? ', ' + m.daScaricare.length + ' da scaricare' : '') + '</div></div>' +
     '<div class="num"><div class="l">Ancora da registrare</div><div class="v">' + m.daFare + '</div><div class="s">su ' + m.voci.length + ' voci di ' + nomeMese(m.mese) + '</div></div></div>';
 
   h += '<div class="card"><h2>Vendite Etsy di ' + nomeMese(m.mese) + '</h2><p class="hint" style="margin-bottom:10px">Ogni riga è un corrispettivo da registrare: data dell\'ordine e totale pagato dal cliente. Spunta quando l\'hai registrato.</p>';
   const inCorso = m.mese >= new Date().getFullYear() + '-' + p2(new Date().getMonth() + 1);
-  if (!m.haCsv && inCorso) h += '<p class="hint">Mese in corso: Etsy pubblica l\'estratto <strong>etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv</strong> dal giorno 1 del mese dopo. Fino ad allora le vendite si vedono solo dalle stampe Printify qui sotto.</p>';
-  else if (!m.haCsv) h += '<p class="hint"><span class="tag av">manca</span> Scarica <strong>etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv</strong> da Etsy e mettilo nella cartella: senza, le vendite di questo mese non si vedono.</p>';
+  if (!m.haVendite && inCorso) h += '<p class="hint">Mese in corso: Etsy pubblica l\'estratto <strong>etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv</strong> dal giorno 1 del mese dopo. Fino ad allora le vendite si vedono solo dalle stampe Printify qui sotto.</p>';
+  else if (!m.haVendite) h += '<p class="hint"><span class="tag av">manca</span> Scarica <strong>etsy_statement_' + m.mese.slice(0, 4) + '_' + (+m.mese.slice(5)) + '.csv</strong> da Etsy e mettilo nella cartella: senza, le vendite di questo mese non si vedono.</p>';
   else if (!m.vendite.length) h += '<p class="hint">Nessuna vendita in questo mese.</p>';
   else {
     h += '<div class="tw"><table><tr><th></th><th>Data</th><th>Ordine</th><th>Maglietta</th><th class="n">Pagato dal cliente</th><th class="n">di cui tasse trattenute</th><th class="n">Commissioni Etsy</th><th class="n">Stampa Printify</th></tr>';
     m.vendite.forEach(v => {
-      h += '<tr class="' + (fatti['v:' + v.ordine] ? 'fatto' : '') + '"><td>' + spunta('v:' + v.ordine) + '</td><td>' + dataIt(v.data) + '</td><td>' + esc(v.ordine) + '</td><td>' + (v.titoli.map(esc).join('<br>') || '—') + '</td>' +
-        '<td class="n"><strong>' + eur(v.incassato) + '</strong></td><td class="n">' + (v.tasse ? eur(v.tasse) : '—') + '</td><td class="n">' + eur(v.comm) + '</td>' +
-        '<td class="n">' + (v.stampe.length ? eur(v.costoStampa) : '<span class="tag av">manca fattura</span>') + '</td></tr>';
+      h += '<tr class="' + (fatti['v:' + v.ordine] ? 'fatto' : '') + '"><td>' + spunta('v:' + v.ordine) + '</td><td>' + dataIt(v.data) + '</td><td>' + esc(v.ordine) + '</td><td>' + (v.titoli.map(esc).join('<br>') || '—') + (v.paese ? ' <span class="hint">· ' + esc(v.paese) + '</span>' : '') + '</td>' +
+        '<td class="n"><strong>' + eur(v.incassato) + '</strong>' + (v.rimborsato ? '<br><span class="tag av">rimborsati ' + eur(v.rimborsato) + '</span>' : '') + '</td><td class="n">' + (v.tasse ? eur(v.tasse) : '—') + '</td><td class="n">' + (v.comm == null ? '—' : eur(v.comm)) + '</td>' +
+        '<td class="n">' + (v.stampe.length ? eur(v.costoStampa) : v.stampaApi ? '<span class="tag av">PDF da scaricare</span>' : '<span class="tag av">non vista</span>') + '</td></tr>';
     });
     h += '<tr><td></td><td colspan="3"><strong>Totale</strong></td><td class="n"><strong>' + eur(m.corrispettivi) + '</strong></td><td class="n">' + eur(m.tasse) + '</td><td class="n"></td><td class="n"></td></tr></table></div>';
     if (m.tasse) h += '<p class="hint" style="margin-top:10px">Le tasse trattenute sono la sales tax o l\'IVA estera che Etsy incassa dal cliente e versa per conto suo: fanno parte di quanto ha pagato il cliente ma a te non arrivano. Se vadano dentro o fuori dal corrispettivo è una scelta da confermare col commercialista.</p>';
@@ -575,7 +628,8 @@ function vistaMese(m) {
   h += '</div>';
 
   h += '<div class="card"><h2>Magliette stampate da Printify</h2><p class="hint" style="margin-bottom:10px">Una fattura per ogni ordine prodotto. Va nelle spese solo quella che porta la tua partita IVA: le altre sono elencate ma non hanno la spunta.</p>';
-  if (!m.printify.length) h += '<p class="hint">Nessuna fattura Printify in questo mese.</p>';
+  if (!m.printify.length && !m.daScaricare.length) h += '<p class="hint">Nessuna maglietta stampata in questo mese.</p>';
+  else if (!m.printify.length) h += '';
   else {
     h += '<div class="tw"><table><tr><th></th><th>Data</th><th>Fattura</th><th>Maglietta</th><th>Spedita in</th><th>Emessa da</th><th>Da dichiarare</th><th class="n">Totale</th></tr>';
     m.printify.forEach(p => {
@@ -586,6 +640,18 @@ function vistaMese(m) {
     });
     h += '<tr><td></td><td colspan="6"><strong>Totale da dichiarare</strong></td><td class="n"><strong>' + eur(m.spesePrintify) + '</strong></td></tr>' +
          '<tr class="no"><td></td><td colspan="6">Totale senza partita IVA</td><td class="n">' + eur(m.printifyFuori) + '</td></tr></table></div>';
+  }
+  if (m.daScaricare.length) {
+    h += '<h3 style="margin-top:16px">Stampate, ma la fattura PDF non è in cartella: ' + m.daScaricare.length + '</h3>' +
+         '<p class="hint" style="margin-bottom:8px">Le vede il Mac mini su Printify. L\'importo in euro e la partita IVA stanno solo nel PDF: scaricalo da Printify (ordine → Billing → Download) e mettilo in <em>FATTURE PRINTIFY</em>. Finché non c\'è, la riga non si può registrare.</p>' +
+         '<div class="tw"><table><tr><th>Data</th><th>Ordine Etsy</th><th>Maglietta</th><th>Spedita in</th><th>Previsione</th><th class="n">Costo indicativo</th></tr>';
+    m.daScaricare.forEach(s => {
+      const usa = /^United States$/i.test(s.paese);
+      h += '<tr><td>' + dataIt(s.data) + '</td><td>' + esc(s.ordine_etsy || '—') + '</td><td>' + ((s.titoli || []).map(x => esc(x.slice(0, 60))).join('<br>') || '—') + '</td><td>' + esc(s.paese) + '</td>' +
+           '<td>' + (usa ? '<span class="tag nn">probabile senza partita IVA (USA)</span>' : '<span class="tag av">da vedere sul PDF</span>') + '</td>' +
+           '<td class="n">' + ((s.costo_cent + s.spedizione_cent) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + ' USD</td></tr>';
+    });
+    h += '</table></div>';
   }
   h += '</div>';
   return h;
@@ -627,7 +693,7 @@ document.getElementById('fileIn').onchange = async e => { await aggiungi([...e.t
 // Per le prove: stesso ingresso dei file trascinati.
 window.ETSY = { aggiungi, conti, controlli, dati: () => D };
 
-if (Object.keys(D.csv).length || Object.keys(D.fattEtsy).length || Object.keys(D.printify).length) vista = 'anno';
+if (Object.keys(D.csv).length || Object.keys(D.fattEtsy).length || Object.keys(D.printify).length || D.auto) vista = 'anno';
 disegna();
 if (cartellaOk) rileggi(true);
 </script>

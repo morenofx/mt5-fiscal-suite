@@ -72,7 +72,20 @@ def main():
     else:
         print("\nPRINTIFY - crea il token: printify.com -> Account (in basso a sinistra) -> Connections")
         print("-> Personal Access Tokens -> Generate. Bastano i permessi di lettura (shops, orders).")
-        tok = getpass.getpass("Incolla il token Printify (non si vede) e premi Invio; Invio vuoto per saltare: ").strip()
+        # Il token Printify e' lungo piu' di 1024 caratteri: incollato in una riga del
+        # Terminale si blocca (limite del terminale) e Invio non parte. Per questo
+        # arriva dagli appunti, in ingresso al programma:
+        #     pbpaste | ssh mac-mini-di-moreno.local python3 stoicinkco/fiscale/collega.py --printify-stdin
+        if "--printify-stdin" in sys.argv:
+            tok = "".join(sys.stdin.read().split())
+            if len(tok) < 100:
+                sys.exit("Negli appunti non c'e' un token Printify (troppo corto): ricopialo da Printify e rilancia.")
+        elif not sys.stdin.isatty():
+            tok = ""
+        else:
+            print("Il token e' troppo lungo per essere incollato qui: copialo e lancia invece")
+            print("    pbpaste | ssh mac-mini-di-moreno.local python3 stoicinkco/fiscale/collega.py --printify-stdin")
+            tok = ""
         if tok:
             try:
                 negozi = chiama("https://api.printify.com/v1/shops.json", {"Authorization": "Bearer " + tok})
@@ -90,6 +103,8 @@ def main():
             print("Printify: collegato al negozio \"%s\"." % scelto.get("title", scelto["id"]))
         else:
             print("Printify: saltato.")
+    if "--printify-stdin" in sys.argv:
+        return        # l'ingresso e' servito per il token: il permesso Etsy si da' col comando normale
 
     # ---------- Etsy: permesso di leggere gli ordini ----------
     if os.path.exists(TOKEN):
@@ -105,10 +120,21 @@ def main():
             "code_challenge": challenge, "code_challenge_method": "S256"})
         print("\nETSY - apri questo link nel browser dove sei gia' dentro Etsy e premi \"Grant access\":\n\n" + url + "\n")
         print("Finisci su una pagina n8n con un errore: e' normale. Copia l'indirizzo INTERO dalla barra.")
-        back = input("Incollalo qui e premi Invio: ").strip()
-        q = urllib.parse.parse_qs(urllib.parse.urlparse(back).query)
-        if q.get("state", [""])[0] != state or not q.get("code"):
-            sys.exit("Indirizzo sbagliato o scaduto: rilancia e incolla subito (il codice dura pochi minuti).")
+        # Un indirizzo sbagliato non chiude il programma: lo dice e richiede.
+        while True:
+            back = input("Incollalo qui e premi Invio: ").strip()
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(back).query)
+            if q.get("state", [""])[0] == state and q.get("code"):
+                break
+            if "etsy.com/oauth" in back:
+                print("\nQuesto e' il link di ETSY, non quello di ritorno: vuol dire che Etsy non ti ha ancora")
+                print("mandato avanti. Nella pagina Etsy premi \"Grant access\"; se invece mostra un errore,")
+                print("non c'e' niente da copiare: fermati con Ctrl+C e riferisci l'errore.")
+                print("L'indirizzo giusto inizia con  https://n8n.stoicinkco.com/  e contiene  code=\n")
+            elif q.get("error"):
+                sys.exit("Etsy ha risposto con un errore: " + str(q.get("error_description", q["error"])[0]))
+            else:
+                print("\nNon e' l'indirizzo giusto: deve iniziare con https://n8n.stoicinkco.com/ e contenere code=\n")
         dati = urllib.parse.urlencode({"grant_type": "authorization_code", "client_id": keystring,
                                        "redirect_uri": REDIRECT, "code": q["code"][0],
                                        "code_verifier": verifier}).encode()
